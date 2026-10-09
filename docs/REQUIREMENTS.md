@@ -1,6 +1,6 @@
 # FujiCull — Product Requirements (v1)
 
-_Status: agreed in requirements interview, 2026-10-09. Owner: you. Next step: sign-off, then technical design._
+_Status: agreed in requirements interview, 2026-10-09; amended after design review the same day (R3, R26, disk-cache NFR — see [DESIGN.md](DESIGN.md) §3). Owner: you._
 
 ## 1. Problem & goal
 
@@ -39,7 +39,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 ### 4.1 Opening a source
 - R1. Open an SD card volume or any folder. Recursively scan `DCIM/` subfolders.
 - R2. Pair files by identical base name in the same folder (`DSCF1234.JPG` ↔ `DSCF1234.RAF`), case-insensitive.
-- R3. Each pair is one **frame** in the cull list, ordered by capture time (EXIF), then filename.
+- R3. Each pair is one **frame** in the cull list, ordered by DCIM folder, then filename (shooting order). _Amended 2026-10-09; was "by capture time (EXIF), then filename". See ADR-004._
 - R4. Orphans (RAF-only or JPG-only) appear as frames with an **"unpaired"** badge. RAF-only frames show the RAF's embedded preview.
 - R5. Ignore non-image files and hidden files (e.g. `._*`, `.Trashes`).
 - R6. If the card is write-locked (SD lock switch), culling and copying work; deletion is disabled with a clear notice.
@@ -107,6 +107,7 @@ Apply runs as an ordered, safe sequence:
 - R23. If the card or SSD disconnects mid-Apply: stop immediately, delete nothing, report what completed. Re-running Apply resumes — already-verified files are skipped.
 - R24. Keepers and undecided frames remain on the card after Apply (I format in camera).
 - R25. Apply can be run again later (e.g. after deciding the undecided ones) and only processes what changed.
+- R26. If a frame that an earlier Apply archived is later changed to **Reject**, the next Apply also removes its archive RAF, archive JPG and Google Photos JPG. These files are moved to the SSD's Trash, are listed in the deletion confirmation, and are removed only if unchanged since FujiCull verified them. A frame changed back to Undecided keeps its archive copy. _Added 2026-10-09._
 
 ## 5. Non-functional requirements
 
@@ -116,7 +117,7 @@ Apply runs as an ordered, safe sequence:
 | Next/previous frame | < 100 ms when prefetched (prefetch next 3 / previous 1 frames). |
 | Holding → | Scrolls smoothly; never blocks on I/O (shows thumbnail until full JPG arrives). |
 | 100% zoom | < 300 ms. |
-| Mac disk use | Preview cache capped at 500 MB in `~/Library/Caches/FujiCull`, purged on Apply / card eject. |
+| Mac disk use | No disk preview cache: previews are held in memory only and freed on card eject (ceiling remains 500 MB if one is ever added). Session files only. |
 | Memory | Comfortable on an 8 GB machine with other apps open. |
 | Safety | No destructive action without explicit confirmation; no deletion before verified copy. |
 | Platform | macOS 14+, Apple Silicon. Native (Swift/SwiftUI + AppKit where needed). |
