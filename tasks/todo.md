@@ -87,12 +87,12 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ## Phase 2 — Culling
 
-### - [ ] T7: CullSession reducer (R7–R11, D3, D4)
+### - [x] T7: CullSession reducer (R7–R11, D3, D4)
 **Description:** A value-type `CullSession` with the `Command` enum: keep, reject, toggleFavourite, reset, next, previous, jump(±10), undo, toggleUndecidedFilter. It maintains the favourite ⇔ Keep invariant, auto-advance (with a preference), a decisions-only undo stack that moves the cursor back, a live Undecided filter, and incremental counts.
 **Acceptance:**
-- [ ] Every keymap row in REQUIREMENTS §4.3 that changes session state has a test.
-- [ ] The favourite invariant holds across every command sequence tested, including a property-style loop over random sequences.
-- [ ] Undo restores both the decision and the favourite flag, and moves the cursor back.
+- [x] Every keymap row in REQUIREMENTS §4.3 that changes session state has a test.
+- [x] The favourite invariant holds across every command sequence tested, including a property-style loop over random sequences.
+- [x] Undo restores both the decision and the favourite flag, and moves the cursor back.
 **Verify:** `make test`
 **Depends on:** T2
 **Files:** `Sources/FujiCullCore/Session/{CullSession,Decision,Command}.swift`, `Tests/FujiCullCoreTests/CullSessionTests.swift`
