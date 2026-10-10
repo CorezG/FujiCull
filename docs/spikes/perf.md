@@ -69,3 +69,10 @@ behavior of the UICollectionViewFlowLayout is not defined" on every move (161 li
 - Forcing the overlay scroller style (05014f0) gives no warning, the full 92 pt, and a strip that scrolls.
   Checked in a scratch harness with the same scroll-view setup, then in the app: the third run logged no
   warnings and the owner confirmed the strip follows the current frame.
+
+## A slow card, for comparison
+
+The 8 GB throwaway card used for Apply rehearsals reads at about 22 MB/s (uncached, 2026-10-10), a quarter of
+Fuji SD's 93 MB/s. A 12 MB JPG then takes about 550 ms to read instead of 130 ms, so stepping faster than
+about two photos a second outruns the preloading: of 105 moves, 18 were not preloaded and took 0.1–1.8 s to
+turn sharp. The thumbnail still appears at once. This is the card's speed, not a regression.

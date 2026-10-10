@@ -202,13 +202,13 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09-apply-doubt-review.md), [exFAT measurements](../docs/spikes/2026-10-10-exfat-fskit.md)). The tasks below carry the resulting rules SR25–SR28 and the changes to SR2, SR7, SR8, SR10, SR17. No code or test in this phase touches a real volume._
 
-### - [ ] T15a: A camera card is always scanned whole, and capture time joins frame identity
+### - [x] T15a: A camera card is always scanned whole, and capture time joins frame identity
 **Description:** Two changes to code from phases 1–2 that Apply's safety rests on (review 3, findings 1 and 11).
 - `SourceLocator.identityBase` returns the volume root only for a camera card (removable or ejectable, with `DCIM/NNN_FUJI`); any other folder is its own base and is keyed by path. Opening a folder inside a card scans the whole card.
 - A camera card with no volume UUID (the X-T50's FAT32 format writes none: measured 2026-10-10) is keyed by capacity and format time.
 - `StoredFrame` keeps the capture time once known. A restored decision whose capture time differs from the scanned frame's, or is missing on either side once metadata has been read, is dropped (the frame goes back to Undecided) and counted in a notice.
 **Acceptance:**
-- [x] Opening `DCIM/124_FUJI` on a card yields the same frames, key and decisions as opening the card. _Unit-tested; and on the throwaway card every folder gives key `card-8001716224-20261010T235520` and 27 pairs (read-only script). Manual check in the app still to do._
+- [x] Opening `DCIM/124_FUJI` on a card yields the same frames, key and decisions as opening the card. _Unit-tested; and on the throwaway card every folder gives key `card-8001716224-20261010T235520` and 27 pairs (read-only script). Checked by the owner in the app on the throwaway card, 2026-10-10: marks made from the card root came back when `DCIM/124_FUJI` was opened._
 - [x] Two folders on one non-card drive get separate sessions.
 - [x] A stored Reject does not bind to a frame with the same path and sizes but a different capture time.
 **Verify:** `make test`; manual: open a subfolder of a card.
