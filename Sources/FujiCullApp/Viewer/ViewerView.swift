@@ -106,6 +106,14 @@ final class ViewerNSView: NSView {
         if onKey?(event) != true { super.keyDown(with: event) }
     }
 
+    /// Key-ups reach the view even when the key-down was a menu shortcut.
+    var onKeyUp: (() -> Void)?
+
+    override func keyUp(with event: NSEvent) {
+        onKeyUp?()
+        super.keyUp(with: event)
+    }
+
     /// Places the image without implicit animation, so panning follows the mouse exactly.
     private func applyGeometry() {
         CATransaction.begin()
@@ -135,6 +143,7 @@ struct ViewerRepresentable: NSViewRepresentable {
     var onZoom: ((CGFloat?) -> Void)?
     /// Called after a new image is put on screen (timing readout, T15).
     var onImageShown: (() -> Void)?
+    var onKeyUp: (() -> Void)?
     let dimmed: Bool
     let onKey: (NSEvent) -> Bool
 
@@ -146,6 +155,7 @@ struct ViewerRepresentable: NSViewRepresentable {
 
     func updateNSView(_ view: ViewerNSView, context: Context) {
         view.onKey = onKey
+        view.onKeyUp = onKeyUp
         if view.image !== image {
             view.image = image
             onImageShown?()

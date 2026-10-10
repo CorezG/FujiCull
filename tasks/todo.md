@@ -171,11 +171,11 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullCore/Metadata/FujiMakerNote.swift`, `Tests/FujiCullCoreTests/FujiMakerNoteTests.swift`, `Tests/Fixtures/*`, `OverlayView.swift`, `docs/spikes/S1-S2.md`
 **Scope:** M
 
-### - [ ] T14: Unpaired frames and RAF-only preview (R4)
+### - [x] T14: Unpaired frames and RAF-only preview (R4)
 **Description:** A pure `RAFHeader` parser (magic, embedded JPEG offset and length at bytes 84 and 88). RAF-only frames show the embedded JPEG through the T0/T1 path. All orphans get an "unpaired" badge in the overlay, filmstrip and grid.
 **Acceptance:**
-- [ ] Parser tests on a synthetic RAF header pass, plus a real trimmed RAF once samples arrive.
-- [ ] RAF-only frames display, and the badge shows.
+- [x] Parser tests on a synthetic RAF header pass, plus a real trimmed RAF once samples arrive.
+- [x] RAF-only frames display, and the badge shows.
 **Verify:** `make test` + manual
 **Depends on:** T10 (and samples for the real fixture)
 **Files:** `Sources/FujiCullCore/Metadata/RAFHeader.swift`, `Tests/FujiCullCoreTests/RAFHeaderTests.swift`, `PreviewPipeline.swift`, `ThumbnailCell.swift`

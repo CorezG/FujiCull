@@ -70,6 +70,13 @@ final class CullModel {
     @ObservationIgnored private var thumbnailRefreshScheduled = false
     @ObservationIgnored private var timing = MoveTiming()
     @ObservationIgnored var lastStripRefreshMs = 0.0
+    /// Holding an arrow key: moves show thumbnails only, and the frame stopped on loads when the key is
+    /// released or after a short rest (T15), so the card isn't busy reading frames already flown past.
+    @ObservationIgnored private var isRifling = false
+    @ObservationIgnored private var settleTask: Task<Void, Never>?
+    @ObservationIgnored private var openStarted: ContinuousClock.Instant?
+    @ObservationIgnored private var openScanMs = 0.0
+    @ObservationIgnored private var zoomStarted: ContinuousClock.Instant?
     private static let timingLog = Logger(subsystem: "com.github.corezg.FujiCull", category: "timing")
     /// Bumped whenever a source opens or closes, so results that arrive late are dropped.
     @ObservationIgnored private var generation = 0
@@ -120,10 +127,13 @@ final class CullModel {
         let name = Self.displayName(of: folder)
         phase = .scanning(name: name)
         let base = SourceLocator.identityBase(for: folder)
+        let started = ContinuousClock.now
         do {
             let result = try await Task.detached(priority: .userInitiated) {
                 try SourceScanner.scan(folder, identityBase: base)
             }.value
+            openScanMs = Self.milliseconds(since: started)
+            openStarted = started
             let key = try SessionKey.for(source: folder)
             let saved = try await store.open(key: key)
             sourceName = name
@@ -196,6 +206,10 @@ final class CullModel {
         }
         sessionKey = nil
         pendingResume = nil
+        settleTask?.cancel()
+        settleTask = nil
+        isRifling = false
+        openStarted = nil
         frames = []
         session = CullSession(frameIDs: [])
         zoomScale = nil
@@ -292,7 +306,14 @@ final class CullModel {
             }
             if session.cursor != before.cursor || session.currentFrameID != before.frame {
                 timing.start(frame: session.currentFrameID)
-                showCurrent()
+                if let event = NSApp.currentEvent, event.type == .keyDown, event.isARepeat {
+                    isRifling = true
+                    showCurrent(loadsDisplay: false)
+                    settleSoon()
+                } else {
+                    isRifling = false
+                    showCurrent()
+                }
             }
             saveSoon()
         case .fitToWindow:
@@ -314,6 +335,28 @@ final class CullModel {
         }
     }
 
+    /// A key was released: if it was being held, load the frame it stopped on now.
+    func keyReleased() {
+        guard isRifling else { return }
+        settle()
+    }
+
+    private func settleSoon() {
+        settleTask?.cancel()
+        settleTask = Task {
+            do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+            settle()
+        }
+    }
+
+    private func settle() {
+        settleTask?.cancel()
+        settleTask = nil
+        guard isRifling else { return }
+        isRifling = false
+        showCurrent()
+    }
+
     // MARK: Timing (T15)
 
     func toggleTimings() {
@@ -322,6 +365,13 @@ final class CullModel {
 
     /// Called by the viewer each time it puts a new image on screen.
     func imageShown() {
+        if let started = openStarted, currentImage != nil {
+            openStarted = nil
+            let first = Int(Self.milliseconds(since: started))
+            Self.timingLog.notice(
+                "open \(self.sourceName, privacy: .public): \(self.frames.count, privacy: .public) frames, scan \(Int(self.openScanMs), privacy: .public) ms, first photo \(first, privacy: .public) ms"
+            )
+        }
         guard let frame = currentFrame?.id, timing.frame == frame, let key = timing.keyUptime else { return }
         let ms = (ProcessInfo.processInfo.systemUptime - key) * 1000
         if timing.photoMs == nil {
@@ -353,6 +403,7 @@ final class CullModel {
         guard phase == .browsing, !isGrid, scale == nil || currentFrame?.jpg != nil else { return }
         let wasZoomed = isZoomed
         zoomScale = scale
+        if scale != nil, !wasZoomed { zoomStarted = .now }
         if scale == nil {
             zoomImage = nil
             fullCache.removeAll()
@@ -399,7 +450,7 @@ final class CullModel {
     }
 
     /// Shows the best cached image for the cursor, then asks the reader for what's missing around it.
-    private func showCurrent() {
+    private func showCurrent(loadsDisplay: Bool = true) {
         guard let frame = currentFrame else {
             currentImage = nil
             zoomImage = nil
@@ -427,14 +478,16 @@ final class CullModel {
                 + zoomWindow.map { key(.full, frames[$0.index].id) })
         let reader = reader
         // Only the viewer's own window is cancelled; filmstrip thumbnails and the background pass carry on.
-        Task { await reader.cancelPending(except: keep, upTo: .behind1) }
+        // While rifling, nothing but the current thumbnail is kept, so the card is free when the key is released.
+        let keepNow = loadsDisplay ? keep : [key(.thumbnail, frame.id)]
+        Task { await reader.cancelPending(except: keepNow, upTo: .behind1) }
 
         if currentImage == nil {
             let index = session.cursor
             Task { await fetchHeader(index: index, priority: .current) }
         }
         // The grid shows thumbnails only, so it doesn't read whole JPGs from the card.
-        guard !isGrid else { return }
+        guard !isGrid, loadsDisplay else { return }
         // Zoomed: the full-resolution frame first, so 100% appears as soon as possible.
         for item in zoomWindow { requestFull(index: item.index, priority: item.priority) }
         for item in window { requestDisplay(index: item.index, priority: item.priority) }
@@ -494,7 +547,15 @@ final class CullModel {
                 inFlight.remove(key)
                 guard isZoomed else { return }
                 fullCache.insert(image, for: frame.id, cost: image.bytesPerRow * image.height)
-                if currentFrame?.id == frame.id { zoomImage = image }
+                if currentFrame?.id == frame.id {
+                    zoomImage = image
+                    if let started = zoomStarted {
+                        zoomStarted = nil
+                        Self.timingLog.notice(
+                            "zoom \(frame.id.rawValue, privacy: .public): full resolution in \(Int(Self.milliseconds(since: started)), privacy: .public) ms"
+                        )
+                    }
+                }
             } catch {
                 if generation == self.generation { inFlight.remove(key) }
             }

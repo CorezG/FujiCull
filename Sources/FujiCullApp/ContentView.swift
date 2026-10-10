@@ -105,7 +105,7 @@ struct BrowseView: View {
             ViewerRepresentable(
                 image: model.currentImage, zoomImage: model.zoomImage, zoomScale: model.zoomScale,
                 pixelSize: model.currentPixelSize, onZoom: { model.setZoom($0) },
-                onImageShown: { model.imageShown() },
+                onImageShown: { model.imageShown() }, onKeyUp: { model.keyReleased() },
                 dimmed: model.currentMark.decision == .reject, onKey: handle)
             if let frame = model.currentFrame {
                 StatusBar(

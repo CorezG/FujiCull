@@ -27,15 +27,15 @@ struct FilmstripView: NSViewRepresentable {
     func makeCoordinator() -> FilmstripCoordinator { FilmstripCoordinator(model: model) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let layout = NSCollectionViewFlowLayout()
+        let layout = style == .strip ? StripLayout() : NSCollectionViewFlowLayout()
         switch style {
         case .strip:
             layout.scrollDirection = .horizontal
             layout.itemSize = NSSize(width: FilmstripCell.width, height: FilmstripCell.height)
             layout.minimumLineSpacing = 6
-            // Cells must fit inside the strip with room to spare: an item taller than the strip minus its
-            // insets makes AppKit log a layout warning on every pass (695 in 30 minutes), costing main-thread time.
-            layout.sectionInset = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+            // With StripLayout the strip's content is as tall as the strip, so a 64 pt cell with these insets
+            // always has the strictly-greater room AppKit requires (no layout warning on each pass).
+            layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 8, right: 12)
         case .grid:
             layout.scrollDirection = .vertical
             layout.itemSize = NSSize(width: 184, height: 138)
@@ -70,6 +70,19 @@ struct FilmstripView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         (scroll.documentView as? ThumbnailCollectionView)?.onKey = onKey
         context.coordinator.refresh(session: session, thumbnailRevision: thumbnailRevision)
+    }
+}
+
+/// A horizontal flow layout whose content fills the strip's height. A plain flow layout sizes the collection
+/// view to exactly cell + insets, and AppKit then warns that the cell isn't strictly shorter than the space
+/// left, on every layout pass (seen ~1 per keypress in the T15 timing logs).
+private final class StripLayout: NSCollectionViewFlowLayout {
+    override var collectionViewContentSize: NSSize {
+        var size = super.collectionViewContentSize
+        if let visibleHeight = collectionView?.enclosingScrollView?.contentView.bounds.height {
+            size.height = max(size.height, visibleHeight)
+        }
+        return size
     }
 }
 
