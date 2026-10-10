@@ -66,22 +66,22 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullImaging/{CardReader,PreviewPipeline,PreviewCache}.swift`, `Tests/FujiCullImagingTests/CardReaderTests.swift`
 **Scope:** M
 
-### - [ ] T6: Open a source and browse with ← →
+### - [x] T6: Open a source and browse with ← →
 **Description:** File ▸ Open (any folder) and auto-detection of a mounted volume with `DCIM/*_FUJI`. A `ViewerView` (layer-backed `NSView`, `keyDown`) shows T1, with T0 as a placeholder, and prefetches +3/−1. ← and → move between frames. The overlay is just the filename and `n / total` for now.
 **Note from T5:** T1 currently decodes with `kCGImageSourceThumbnailMaxPixelSize` (about 90 ms at size M after the read). Try `kCGImageSourceSubsampleFactor` (JPEG DCT half-size decode) if browsing feels slow, and keep T1 near 17 MB per frame for the cache budget.
 **Acceptance:**
-- [ ] Opening a folder copy of a real card shows the first image in under 2 s.
-- [ ] ← and → move between frames and the prefetch makes them feel instant at normal pace.
-- [ ] Closing the source frees the preview memory (checked in Activity Monitor).
+- [x] Opening a folder copy of a real card shows the first image in under 2 s.
+- [x] ← and → move between frames and the prefetch makes them feel instant at normal pace.
+- [x] Closing the source frees the preview memory (checked in Activity Monitor).
 **Verify:** `make run`; manual check on a folder of JPGs
 **Depends on:** T2, T5
 **Files:** `Sources/FujiCullApp/{FujiCullApp,CullModel}.swift`, `Sources/FujiCullApp/Viewer/{ViewerView,ViewerController}.swift`
 **Scope:** M
 
 ### Checkpoint A — browse slice
-- [ ] `make test` and `make lint` are green, and `make app` builds.
-- [ ] You open a folder or card and browse it with ← → (run on your Mac).
-- [ ] T3 findings reviewed; DESIGN updated if needed.
+- [x] `make test` and `make lint` are green, and `make app` builds. (`make check` 9 s, 70 tests, coverage 94.2%.)
+- [x] You open a folder or card and browse it with ← → (run on your Mac). Confirmed by the owner on Fuji SD, 2026-10-09.
+- [x] T3 findings reviewed; DESIGN updated (hardware probe). Still to do by hand: SD lock-switch test and UUID-after-format check.
 
 ---
 

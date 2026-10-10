@@ -47,8 +47,8 @@ Not machine-checkable, so reviewed by a human at Checkpoint D: **every failure p
 
 | Metric | Today | Direction |
 |--------|-------|-----------|
-| Core + Imaging line coverage | no code yet; recorded at Checkpoint A | must not fall (0.5% tolerance) |
-| Task-end check duration | no code yet; recorded at Checkpoint A | must not grow past 90 s |
+| Core + Imaging line coverage | 94.2% (568/603 lines) at Checkpoint A, 2026-10-09 | must not fall (0.5% tolerance) |
+| Task-end check duration | 9 s at Checkpoint A, 2026-10-09 | must not grow past 90 s |
 
 ## Where each check runs
 
