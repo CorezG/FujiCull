@@ -245,7 +245,7 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 **Files:** `Sources/FujiCullCore/Apply/{Ledger,LedgerJournal}.swift`, `Tests/FujiCullCoreTests/LedgerTests.swift`
 **Scope:** S
 
-### - [ ] T18: ApplyPlanner (R22, R24–R26, D6, D7)
+### - [x] T18: ApplyPlanner (R22, R24–R26, D6, D7)
 **Description:** A pure `plan(ApplyInput) throws(ApplyError) -> ApplyPlan` implementing §5.7:
 - the destination `<SSD root>/<Trip name>/` (+ `Google Photos/`), including the "folder exists but isn't ours" case and exFAT-invalid trip names
 - collision suffixes chosen per pair
@@ -257,8 +257,8 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 - pre-flight facts (counts, read-only flag, the R22 gate state)
 **Safety rules:** SR2 (records bind only with a matching capture time; closed frames; no capture time means never deleted), SR8–SR14 (per-file planning; exact on-disk names, the volume decides what exists, ambiguity stops; own-reservation reuse and joint re-allocation; Google Photos copy from the archive JPG whenever none is on record, disposable; tags planned from actual tags, only on files we tagged; removal only for current `reserve`→`verified` chains; left-on-card list incl. other files and a count of skipped items; cluster-rounded space incl. `._`), SR26 (re-homing a whole frame; `superseded` files never removed), several destinations per ledger, R27 videos.
 **Acceptance:**
-- [ ] Tests cover: first run; a re-run after deciding the Undecided frames; Keep→Reject after archiving (archive removal planned); Keep→Undecided after archiving (nothing planned); favourite added and removed; collisions (including one only in `Google Photos/`); insufficient space; a read-only card; and that Undecided frames are never touched.
-- [ ] Tests from review 3: a same-path, same-size frame with a different capture time gets a copy and no delete; a resumed run still plans the missing Google Photos copies; a foreign file at a needed name re-homes the whole frame; keepers recorded under an earlier folder are still checked there.
+- [x] Tests cover: first run; a re-run after deciding the Undecided frames; Keep→Reject after archiving (archive removal planned); Keep→Undecided after archiving (nothing planned); favourite added and removed; collisions (including one only in `Google Photos/`); insufficient space; a read-only card; and that Undecided frames are never touched.
+- [x] Tests from review 3: a same-path, same-size frame with a different capture time gets a copy and no delete; a resumed run still plans the missing Google Photos copies; a foreign file at a needed name re-homes the whole frame; keepers recorded under an earlier folder are still checked there. _49 planner tests in all. Four safety rules were broken in turn (capture time ignored, delete without a capture date, closed frames binding, journal names reused) and tests failed each time._
 **Verify:** `make test`
 **Depends on:** T2, T7, T17
 **Files:** `Sources/FujiCullCore/Apply/{ApplyPlanner,ApplyPlan,ApplyError}.swift`, `Tests/FujiCullCoreTests/ApplyPlannerTests.swift`

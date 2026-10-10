@@ -87,9 +87,15 @@ public enum LedgerRecord: Codable, Equatable, Sendable {
 /// `verified` with no `reserve`, a `trashed` with no `trashing`) is ignored, so it can never make a file
 /// that isn't provably FujiCull's look removable.
 public struct Ledger: Equatable, Sendable {
-    public struct Destination: Equatable, Sendable {
+    /// A trip folder on an archive volume.
+    public struct Destination: Hashable, Sendable {
         public let volumeUUID: String
         public let folder: String
+
+        public init(volumeUUID: String, folder: String) {
+            self.volumeUUID = volumeUUID
+            self.folder = folder
+        }
     }
 
     public struct ArchiveFile: Equatable, Sendable {
@@ -115,6 +121,10 @@ public struct Ledger: Equatable, Sendable {
         public fileprivate(set) var trashPath: String?
         /// True when FujiCull set the Favourite tag on this file, so FujiCull may remove it (SR12).
         public fileprivate(set) var taggedByUs = false
+        /// Position of this file's reservation among all reservations: a larger number was reserved later.
+        public fileprivate(set) var sequence = 0
+
+        public var destination: Destination { Destination(volumeUUID: location.volumeUUID, folder: location.folder) }
     }
 
     public enum CardFileStatus: Equatable, Sendable {
@@ -127,6 +137,7 @@ public struct Ledger: Equatable, Sendable {
     /// Locations in the order they were first reserved, so listings are stable.
     private var order: [ArchiveLocation] = []
     private var cardFiles: [String: CardFileStatus] = [:]
+    private var reservations = 0
 
     public init(_ records: [LedgerRecord] = []) {
         for record in records { self.record(record) }
@@ -160,8 +171,10 @@ public struct Ledger: Equatable, Sendable {
             chosenDestination = Destination(volumeUUID: volumeUUID, folder: folder)
         case .reserve(let owner, let role, let location, let partial):
             if files[location] == nil { order.append(location) }
+            reservations += 1
             files[location] = ArchiveFile(
-                location: location, owner: owner, role: role, partial: partial, status: .reserved)
+                location: location, owner: owner, role: role, partial: partial, status: .reserved,
+                sequence: reservations)
         case .verified(let owner, let role, let location, let source, let size, let sha256):
             // Only the frame that reserved the name can verify it.
             guard let file = files[location], file.status == .reserved, file.owner == owner, file.role == role
