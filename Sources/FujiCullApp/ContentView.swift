@@ -18,6 +18,8 @@ struct ContentView: View {
                 }
             case .browsing:
                 BrowseView(model: model)
+            case .resumePrompt(let matched, let expected):
+                ResumePrompt(model: model, matched: matched, expected: expected)
             case .failed(let message):
                 VStack(spacing: 14) {
                     Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -191,6 +193,30 @@ extension BrowseView {
     static func filename(of frame: Frame) -> String {
         let path = frame.jpg?.relativePath ?? frame.raf?.relativePath ?? frame.id.rawValue
         return (path as NSString).lastPathComponent
+    }
+}
+
+/// Shown when only part of the saved session still matches the card (SR4).
+struct ResumePrompt: View {
+    let model: CullModel
+    let matched: Int
+    let expected: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("This card has changed since your last session").font(.system(size: 18, weight: .semibold))
+            Text(
+                "\(matched.formatted()) of \(expected.formatted()) decisions from your last session on \(model.sourceName) still match the photos on the card. The others belong to photos that have been deleted or replaced."
+            )
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Start Fresh") { Task { await model.startFresh() } }
+                Spacer()
+                Button("Resume") { model.resumeSession() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .frame(width: 460)
     }
 }
 

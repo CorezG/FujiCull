@@ -22,6 +22,8 @@ public actor SessionStore {
     private var key: String?
     private var lockDescriptor: Int32 = -1
     private var pending: SessionFile?
+    /// Highest revision accepted by `scheduleSave`; older ones that arrive late are ignored.
+    private var latestRevision = Int.min
     private var flushTask: Task<Void, Never>?
     /// The last error from a debounced save, reported by the next `flush` or `close`.
     private var deferredError: Error?
@@ -51,6 +53,7 @@ public actor SessionStore {
         }
         lockDescriptor = descriptor
         self.key = key
+        latestRevision = .min
 
         let url = sessionURL(key)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -78,9 +81,11 @@ public actor SessionStore {
 
     // MARK: Saving
 
-    /// Saves after a short pause, so a burst of keypresses becomes one write.
-    public func scheduleSave(_ file: SessionFile) {
-        guard key != nil else { return }
+    /// Saves after a short pause, so a burst of keypresses becomes one write. Callers number their saves:
+    /// requests can reach the actor out of order, and an older `revision` must never replace a newer one.
+    public func scheduleSave(_ file: SessionFile, revision: Int = .max) {
+        guard key != nil, revision >= latestRevision else { return }
+        latestRevision = revision
         pending = file
         guard flushTask == nil else { return }
         let delay = debounce

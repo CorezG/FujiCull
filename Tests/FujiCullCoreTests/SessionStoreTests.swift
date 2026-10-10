@@ -67,6 +67,20 @@ private func snapshot(_ root: URL) throws -> [String: Int] {
         try await store.close()
     }
 
+    @Test func anOlderRevisionArrivingLateNeverOverwritesANewerOne() async throws {
+        let support = try TempTree()
+        let store = SessionStore(directory: support.root, debounce: .milliseconds(50))
+        _ = try await store.open(key: "vol-TEST")
+
+        await store.scheduleSave(sampleFile(decisions: 3), revision: 2)
+        await store.scheduleSave(sampleFile(decisions: 1), revision: 1)
+        try await store.close()
+
+        let onDisk = try JSONDecoder().decode(
+            SessionFile.self, from: Data(contentsOf: support.url("Sessions/vol-TEST.json")))
+        #expect(onDisk.frames.count == 3)
+    }
+
     @Test func closingFlushesAPendingSave() async throws {
         let support = try TempTree()
         let store = SessionStore(directory: support.root, debounce: .seconds(60))

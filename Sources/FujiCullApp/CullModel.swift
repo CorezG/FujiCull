@@ -11,6 +11,8 @@ final class CullModel {
         case start
         case scanning(name: String)
         case browsing
+        /// Only part of the saved session matches the card: ask Resume or Start fresh (SR4).
+        case resumePrompt(matched: Int, expected: Int)
         case failed(message: String)
     }
 
@@ -38,6 +40,11 @@ final class CullModel {
     @ObservationIgnored private var identityBase: URL?
     @ObservationIgnored private var sourceVolume: URL?
     @ObservationIgnored private let reader = CardReader()
+    /// Saves decisions in ~/Library/Application Support/FujiCull (DESIGN §5.3).
+    @ObservationIgnored private let store = SessionStore(directory: CullModel.supportDirectory())
+    @ObservationIgnored private var sessionKey: String?
+    @ObservationIgnored private var saveRevision = 0
+    @ObservationIgnored private var pendingResume: CullSession?
     /// About five 2560 px frames (DESIGN §5.4 memory budget).
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 100_000_000)
     @ObservationIgnored private var thumbnailCache = PreviewCache<FrameID, CGImage>(byteBudget: 30_000_000)
@@ -58,6 +65,12 @@ final class CullModel {
                 [weak self] note in
                 let volume = note.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL
                 MainActor.assumeIsolated { self?.volumeUnmounted(volume) }
+            })
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.saveBeforeQuitting() }
             })
     }
 
@@ -81,7 +94,7 @@ final class CullModel {
     // MARK: Opening and closing
 
     func open(_ folder: URL) async {
-        close()
+        await closeSource()
         let name = Self.displayName(of: folder)
         phase = .scanning(name: name)
         let base = SourceLocator.identityBase(for: folder)
@@ -89,23 +102,75 @@ final class CullModel {
             let result = try await Task.detached(priority: .userInitiated) {
                 try SourceScanner.scan(folder, identityBase: base)
             }.value
+            let key = try SessionKey.for(source: folder)
+            let saved = try await store.open(key: key)
             sourceName = name
             identityBase = base
             sourceVolume = try? folder.resourceValues(forKeys: [.volumeURLKey]).volume
+            sessionKey = key
             frames = result.frames
-            session = CullSession(frameIDs: result.frames.map(\.id))
+            switch SessionRestore.match(saved, to: result.frames) {
+            case .none:
+                session = CullSession(frameIDs: result.frames.map(\.id))
+            case .full(let restored):
+                session = restored
+            case .partial(let matched, let expected, let resumed):
+                pendingResume = resumed
+                phase = .resumePrompt(matched: matched, expected: expected)
+                return
+            }
             phase = .browsing
             showCurrent()
+        } catch SessionStore.StoreError.alreadyOpen {
+            phase = .failed(message: "\(name) is already open in another FujiCull window.")
+        } catch SessionStore.StoreError.newerVersion {
+            phase = .failed(message: "\(name) was saved by a newer version of FujiCull. Update FujiCull to open it.")
         } catch {
             phase = .failed(message: "Couldn't read \(name): \(error.localizedDescription)")
         }
     }
 
-    /// Closes the source and frees every cached preview (DESIGN §5.4).
+    /// Resume: keep the saved decisions that still match the card.
+    func resumeSession() {
+        guard case .resumePrompt = phase, let resumed = pendingResume else { return }
+        pendingResume = nil
+        session = resumed
+        phase = .browsing
+        saveSoon()
+        showCurrent()
+    }
+
+    /// Start fresh: the old session and journal are archived, and every frame starts Undecided.
+    func startFresh() async {
+        guard case .resumePrompt = phase else { return }
+        pendingResume = nil
+        do {
+            try await store.startFresh()
+        } catch {
+            phase = .failed(message: "Couldn't archive the old session: \(error.localizedDescription)")
+            return
+        }
+        session = CullSession(frameIDs: frames.map(\.id))
+        phase = .browsing
+        showCurrent()
+    }
+
+    /// For menus and notifications, which can't await.
     func close() {
+        Task { await closeSource() }
+    }
+
+    /// Saves, releases the card's session lock and frees every cached preview (DESIGN §5.3, §5.4).
+    func closeSource() async {
         generation += 1
         let reader = reader
         Task { await reader.cancelPending(except: []) }
+        if sessionKey != nil {
+            saveSoon()
+            do { try await store.close() } catch { phase = .failed(message: "Couldn't save: \(error)") }
+        }
+        sessionKey = nil
+        pendingResume = nil
         frames = []
         session = CullSession(frameIDs: [])
         isZoomed = false
@@ -119,7 +184,7 @@ final class CullModel {
         identityBase = nil
         sourceVolume = nil
         sourceName = ""
-        phase = .start
+        if case .failed = phase {} else { phase = .start }
         refreshCards()
     }
 
@@ -132,6 +197,43 @@ final class CullModel {
         if let volume, let sourceVolume, volume.standardizedFileURL == sourceVolume.standardizedFileURL {
             close()
         }
+    }
+
+    // MARK: Saving
+
+    /// Queues a save of the current state; the store writes the latest one after a short pause (SR5).
+    private func saveSoon() {
+        guard let key = sessionKey else { return }
+        saveRevision += 1
+        let file = SessionFile(key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames)
+        let revision = saveRevision
+        let store = store
+        Task { await store.scheduleSave(file, revision: revision) }
+    }
+
+    /// Quitting can't wait for an async task, so this blocks briefly until the latest state is on disk.
+    private func saveBeforeQuitting() {
+        guard let key = sessionKey else { return }
+        let file = SessionFile(key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames)
+        let store = store
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            do {
+                try await store.save(file)
+                try await store.close()
+            } catch {
+                FileHandle.standardError.write(Data("FujiCull: couldn't save before quitting: \(error)\n".utf8))
+            }
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 5)
+    }
+
+    private static func supportDirectory() -> URL {
+        let base =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base.appendingPathComponent("FujiCull", isDirectory: true)
     }
 
     // MARK: Commands
@@ -149,6 +251,7 @@ final class CullModel {
                 flash(for: command, mark: session.mark(at: index))
             }
             if session.cursor != before.cursor || session.currentFrameID != before.frame { showCurrent() }
+            saveSoon()
         case .toggleZoom, .toggleGrid, .toggleExif:
             guard canPerform(action) else { return }
             switch action {
