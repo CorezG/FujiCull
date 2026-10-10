@@ -67,6 +67,27 @@ struct BrowseView: View {
     let model: CullModel
 
     var body: some View {
+        if model.isGrid {
+            grid
+        } else {
+            single
+        }
+    }
+
+    /// Grid view (R15): the same keys act on the selected cell, which is the cursor.
+    private var grid: some View {
+        VStack(spacing: 0) {
+            FilmstripView(
+                model: model, style: .grid, onKey: handle, session: model.session,
+                thumbnailRevision: model.thumbnailRevision)
+            if let frame = model.currentFrame {
+                StatusBar(frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position)
+                    .padding(10)
+            }
+        }
+    }
+
+    private var single: some View {
         VStack(spacing: 0) {
             viewer
             if !model.frames.isEmpty {

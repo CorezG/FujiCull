@@ -267,8 +267,14 @@ final class CullModel {
         case .toggleZoom, .toggleGrid, .toggleExif:
             guard canPerform(action) else { return }
             switch action {
+            // In the grid, Return opens the selected frame in the single view.
+            case .toggleZoom where isGrid:
+                isGrid = false
+                showCurrent()
             case .toggleZoom: isZoomed.toggle()
-            case .toggleGrid: isGrid.toggle()
+            case .toggleGrid:
+                isGrid.toggle()
+                if !isGrid { showCurrent() }
             default: showsExif.toggle()
             }
         }
@@ -279,9 +285,10 @@ final class CullModel {
         switch action {
         case .cull(.undo): return session.canUndo
         case .cull: return !frames.isEmpty
-        // Shown in the menus now so the keymap is complete; their views arrive in T11 (grid),
-        // T12 (zoom) and T13 (EXIF line).
-        case .toggleZoom, .toggleGrid, .toggleExif: return false
+        case .toggleGrid: return !frames.isEmpty
+        // Return opens a frame from the grid now; 100% zoom itself arrives in T12, the EXIF line in T13.
+        case .toggleZoom: return isGrid
+        case .toggleExif: return false
         }
     }
 
@@ -325,6 +332,8 @@ final class CullModel {
             let index = session.cursor
             Task { await fetchHeader(index: index, priority: .current) }
         }
+        // The grid shows thumbnails only, so it doesn't read whole JPGs from the card.
+        guard !isGrid else { return }
         for item in window { requestDisplay(index: item.index, priority: item.priority) }
     }
 

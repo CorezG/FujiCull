@@ -2,11 +2,21 @@ import AppKit
 import FujiCullCore
 import SwiftUI
 
-/// The thumbnail strip along the bottom (R14): one cell per frame with its decision, virtualised by
-/// NSCollectionView so 2,000+ frames scroll smoothly (ADR-006). Clicking a cell goes to that frame.
-/// It never takes keyboard focus, so the arrow keys always reach the viewer.
+/// Thumbnails of every frame with its decision, virtualised by NSCollectionView so 2,000+ frames scroll
+/// smoothly (ADR-006). Two styles share the cells and loading:
+/// - `.strip`: the filmstrip along the bottom (R14). It never takes keyboard focus, so keys reach the viewer.
+/// - `.grid`: the grid view (R15). It takes the keys itself; the selection is the cursor.
+/// Clicking a cell goes to that frame.
 struct FilmstripView: NSViewRepresentable {
+    enum Style {
+        case strip
+        case grid
+    }
+
     let model: CullModel
+    var style: Style = .strip
+    /// Grid only: the keymap handler (returns true when the key was used).
+    var onKey: ((NSEvent) -> Bool)?
     /// Inputs that should trigger a refresh. SwiftUI calls `updateNSView` when they change.
     let session: CullSession
     let thumbnailRevision: Int
@@ -15,41 +25,69 @@ struct FilmstripView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let layout = NSCollectionViewFlowLayout()
-        layout.scrollDirection = .horizontal
-        layout.itemSize = NSSize(width: FilmstripCell.width, height: FilmstripCell.height)
-        layout.minimumLineSpacing = 6
-        layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        switch style {
+        case .strip:
+            layout.scrollDirection = .horizontal
+            layout.itemSize = NSSize(width: FilmstripCell.width, height: FilmstripCell.height)
+            layout.minimumLineSpacing = 6
+            layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        case .grid:
+            layout.scrollDirection = .vertical
+            layout.itemSize = NSSize(width: 184, height: 138)
+            layout.minimumLineSpacing = 14
+            layout.minimumInteritemSpacing = 14
+            layout.sectionInset = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        }
 
-        let collection = PassiveCollectionView()
+        let collection = ThumbnailCollectionView()
+        collection.takesKeys = style == .grid
+        collection.onKey = onKey
         collection.collectionViewLayout = layout
-        collection.backgroundColors = [NSColor(white: 0.14, alpha: 1)]
+        collection.backgroundColors = [style == .strip ? NSColor(white: 0.14, alpha: 1) : .black]
         collection.isSelectable = false
         collection.register(FilmstripItem.self, forItemWithIdentifier: FilmstripItem.identifier)
         collection.dataSource = context.coordinator
         context.coordinator.collection = collection
+        context.coordinator.scrollPosition = style == .strip ? .centeredHorizontally : .nearestHorizontalEdge
 
         let scroll = NSScrollView()
         scroll.documentView = collection
         scroll.hasHorizontalScroller = false
-        scroll.hasVerticalScroller = false
+        scroll.hasVerticalScroller = style == .grid
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+        (scroll.documentView as? ThumbnailCollectionView)?.onKey = onKey
         context.coordinator.refresh(session: session, thumbnailRevision: thumbnailRevision)
     }
 }
 
-/// A collection view that never becomes first responder, so keys keep going to the viewer.
-private final class PassiveCollectionView: NSCollectionView {
-    override var acceptsFirstResponder: Bool { false }
+/// The strip never takes focus, so keys keep going to the viewer; the grid takes focus and hands every key
+/// to the keymap, so ↑/↓ decide and ←/→ move instead of the collection view's own selection behaviour.
+private final class ThumbnailCollectionView: NSCollectionView {
+    var takesKeys = false
+    var onKey: ((NSEvent) -> Bool)?
+
+    override var acceptsFirstResponder: Bool { takesKeys }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if takesKeys { window?.makeFirstResponder(self) }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if onKey?(event) != true { super.keyDown(with: event) }
+    }
 }
 
 @MainActor
 final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
     private let model: CullModel
     weak var collection: NSCollectionView?
+    var scrollPosition: NSCollectionView.ScrollPosition = .centeredHorizontally
     private var shownCount = -1
     private var shownCursor = -1
 
@@ -73,7 +111,7 @@ final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
             shownCursor = session.cursor
             collection.layoutSubtreeIfNeeded()
             collection.scrollToItems(
-                at: [IndexPath(item: session.cursor, section: 0)], scrollPosition: .centeredHorizontally)
+                at: [IndexPath(item: session.cursor, section: 0)], scrollPosition: scrollPosition)
         }
     }
 
