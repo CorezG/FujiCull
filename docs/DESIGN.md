@@ -170,7 +170,7 @@ There are three tiers. Every read goes through one `CardReader` actor that serve
 - **Spike S1 (done):** X-T50 JPGs have **no MPF preview**, so T1 reads the whole JPG. At size M a full decode (≈ 45 ms) is faster than a downsampled one (≈ 90 ms). T5 should measure whether to decode in full and let the layer scale, within the T1 memory budget.
 - **RAF-only orphans** (R4): parse the RAF header (the magic is `FUJIFILMCCD-RAW`; a big-endian `UInt32` JPEG offset and length are at bytes 84 and 88). Read only the embedded JPEG and run it through the same T0 and T1 path. T2 isn't available for these; zoom shows the embedded preview at its maximum size.
 - **Holding → (key repeat):** the viewer shows T0 instantly and requests T1 only once the key has been released, or after the cursor has rested for 120 ms. The card queue therefore never falls behind a run of 30 frames per second (NFR "never blocks").
-- **Zoom across frames** (R12): when zoom is on, the prefetcher asks for T2 of +1 as well. Only one extra T2 is held, to stay within budget.
+- **Zoom and frame changes** (R12, amended): moving to another frame returns to fit and frees the T2 image, so only the current frame's T2 is ever loaded.
 - **Background metadata pass:** after open, T0 is read for every frame in order. This fills the filmstrip, the EXIF and the capture dates. That's about 128 MB of small reads, probably 10–30 s, and it never blocks the UI. Apply doesn't need it, since folder names no longer include a date (Q10).
 - **Memory budget:**
 

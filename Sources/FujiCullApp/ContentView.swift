@@ -81,8 +81,11 @@ struct BrowseView: View {
                 model: model, style: .grid, onKey: handle, session: model.session,
                 thumbnailRevision: model.thumbnailRevision)
             if let frame = model.currentFrame {
-                StatusBar(frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position)
-                    .padding(10)
+                StatusBar(
+                    frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position,
+                    exif: model.showsExif ? model.currentExif.map(ExifLine.parts) : nil
+                )
+                .padding(10)
             }
         }
     }
@@ -106,7 +109,8 @@ struct BrowseView: View {
             if let frame = model.currentFrame {
                 StatusBar(
                     frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position,
-                    zoom: model.zoomScale.map { "\(Int(($0 * 100).rounded()))%" + (model.zoomImage == nil ? "…" : "") }
+                    zoom: model.zoomScale.map { "\(Int(($0 * 100).rounded()))%" + (model.zoomImage == nil ? "…" : "") },
+                    exif: model.showsExif ? model.currentExif.map(ExifLine.parts) : nil
                 )
                 .padding(14)
             } else if model.session.undecidedOnly && !model.frames.isEmpty {
@@ -145,6 +149,8 @@ private struct StatusBar: View {
     let position: (index: Int, count: Int)
     /// The zoom level while zoomed, e.g. "100%", with "…" while the full-resolution image loads.
     var zoom: String?
+    /// The EXIF line (R17), shown while I is on.
+    var exif: [String]?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -156,6 +162,11 @@ private struct StatusBar: View {
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(.yellow)
             }
             Spacer()
+            if let exif {
+                HStack(spacing: 14) { ForEach(exif, id: \.self) { Text($0) } }
+                    .foregroundStyle(Color(white: 0.85))
+                Spacer()
+            }
             Text("\(counts.keep) kept").foregroundStyle(Color(red: 0.19, green: 0.82, blue: 0.35))
             Text("\(counts.reject) rejected").foregroundStyle(Color(red: 1, green: 0.27, blue: 0.23))
             Text("\(counts.undecided) undecided").foregroundStyle(.secondary)

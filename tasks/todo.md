@@ -151,7 +151,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [x] T12: 100% zoom (Return) with mouse-follow and T2 prefetch (R12, D5)
 **Description:** Return toggles between fit and 100% (1 image pixel per device pixel). The pan position follows the mouse. Zoom stays on when moving between frames, and +1's T2 is prefetched while zoomed. The T2 cache (two frames at most) is cleared when zoom is turned off.
-**Added at the owner's request (2026-10-09):** scroll-wheel and trackpad-pinch zoom from fit up to 200%, about the point under the mouse; the zoom level (not just on/off) persists across frames. Grid: double-click opens a frame, like Return.
+**Added at the owner's request (2026-10-09):** scroll-wheel and trackpad-pinch zoom from fit up to 200%, about the point under the mouse. Esc returns to fit. Moving to another frame returns to fit (R12 amended). Grid: double-click opens a frame, like Return.
 **Acceptance:**
 - [x] Zoom is under 300 ms when the frame was prefetched; the cold-zoom time is measured and noted.
 - [x] Memory stays under ~500 MB while zoomed.
@@ -163,9 +163,9 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 ### - [ ] T13: EXIF line (I) and film simulation, + spikes S1/S2 _(needs sample files)_
 **Description:** Check the X-T50 file layout with the samples: APP1 within 64 KB? IFD1 thumbnail size? MPF preview? Then a pure `FujiMakerNote` parser (tags 0x1401 and 0x1003) mapping to film simulation names, showing "—" for unknown values. I toggles the EXIF line. Trimmed real fixtures are added (≤ 2 MB total).
 **Acceptance:**
-- [ ] Every sample film simulation decodes to the right name.
-- [ ] Unknown values show "—".
-- [ ] S1/S2 results are recorded in `docs/spikes/S1-S2.md`.
+- [x] Every sample film simulation decodes to the right name (4 real fixtures; all 2,091 JPGs on Fuji SD decode, 0 unknown).
+- [x] Unknown values show "—".
+- [x] S1/S2 results are recorded in `docs/spikes/2026-10-09-hardware-probe.md` (done on day one, so no separate file).
 **Verify:** `make test` + manual
 **Depends on:** T4, T10
 **Files:** `Sources/FujiCullCore/Metadata/FujiMakerNote.swift`, `Tests/FujiCullCoreTests/FujiMakerNoteTests.swift`, `Tests/Fixtures/*`, `OverlayView.swift`, `docs/spikes/S1-S2.md`

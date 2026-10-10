@@ -70,7 +70,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 | Double-click (grid) | Open the frame in the single view, like Return _(added 2026-10-09)_ |
 
 - R11. Auto-advance after ↑/↓ is on by default (preference to turn it off).
-- R12. At 100% zoom, the zoom centre follows the mouse; arrow keys still navigate frames (zoom level persists across frames so I can compare focus).
+- R12. At 100% zoom, the zoom centre follows the mouse; arrow keys still navigate frames, and moving to another frame returns to the whole-photo view. _Amended 2026-10-09; zoom previously persisted across frames._
 - R13. Every action is also available from the menu bar so shortcuts are discoverable.
 
 ### 4.4 Screen layout

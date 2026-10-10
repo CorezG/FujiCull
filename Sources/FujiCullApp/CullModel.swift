@@ -30,7 +30,7 @@ final class CullModel {
     private(set) var session = CullSession(frameIDs: [])
     /// View toggles owned by the app (REQUIREMENTS §4.3): zoom (T12), grid (T11), EXIF line (T13).
     /// nil = fit; 1 = 100% (one image pixel per screen pixel); up to `ZoomGeometry.maxScale` (R12, D5).
-    /// Persists across frames so focus can be compared.
+    /// Returns to fit whenever the cursor moves to another frame.
     private(set) var zoomScale: CGFloat?
     var isZoomed: Bool { zoomScale != nil }
     private(set) var isGrid = false
@@ -56,7 +56,7 @@ final class CullModel {
     /// About five 2560 px frames (DESIGN §5.4 memory budget).
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 100_000_000)
     @ObservationIgnored private var thumbnailCache = PreviewCache<FrameID, CGImage>(byteBudget: 30_000_000)
-    /// T2 for the current and next frame only, while zoomed: 80 MB each at size M (DESIGN §5.4).
+    /// T2 for the current frame only, while zoomed: 80 MB at size M (DESIGN §5.4).
     @ObservationIgnored private var fullCache = PreviewCache<FrameID, CGImage>(byteBudget: 340_000_000)
     @ObservationIgnored private var inFlight: Set<String> = []
     /// Every frame's T0 once read: the thumbnail still compressed (~9 KB) plus EXIF (DESIGN §5.4).
@@ -267,6 +267,12 @@ final class CullModel {
         case .cull(let command):
             let before = (cursor: session.cursor, frame: session.currentFrameID, mark: currentMark)
             session.apply(command)
+            // Moving to another photo returns to fit (R12 as amended 2026-10-09).
+            if session.currentFrameID != before.frame, isZoomed {
+                zoomScale = nil
+                zoomImage = nil
+                fullCache.removeAll()
+            }
             if let frame = before.frame, let index = frames.firstIndex(where: { $0.id == frame }),
                 session.mark(at: index) != before.mark
             {
@@ -307,6 +313,12 @@ final class CullModel {
         }
     }
 
+    /// The current frame's EXIF, once its T0 has been read.
+    var currentExif: ExifSummary? {
+        guard let frame = currentFrame else { return nil }
+        return headers[frame.id]?.exif
+    }
+
     /// The current frame's upright size in pixels, from EXIF, so zoom can be sized before the full image loads.
     var currentPixelSize: CGSize? {
         if let zoomImage { return CGSize(width: zoomImage.width, height: zoomImage.height) }
@@ -323,7 +335,7 @@ final class CullModel {
         case .fitToWindow: return isZoomed
         // Return opens the selected frame from the grid; in the single view it zooms a frame that has a JPG.
         case .toggleZoom: return isGrid || currentFrame?.jpg != nil
-        case .toggleExif: return false
+        case .toggleExif: return !frames.isEmpty
         }
     }
 
@@ -360,8 +372,8 @@ final class CullModel {
         let window = PrefetchWindow.requests(cursor: position, count: visible.count).map {
             (index: visible[$0.index], priority: $0.priority)
         }
-        // While zoomed, also the full-resolution current frame and the next one (R12: zoom persists across frames).
-        let zoomWindow = isZoomed ? Array(window.prefix(2)) : []
+        // While zoomed, the full-resolution current frame (zoom doesn't carry over to other frames).
+        let zoomWindow = isZoomed ? Array(window.prefix(1)) : []
         let keep = Set(
             window.flatMap { [key(.thumbnail, frames[$0.index].id), key(.display, frames[$0.index].id)] }
                 + zoomWindow.map { key(.full, frames[$0.index].id) })
