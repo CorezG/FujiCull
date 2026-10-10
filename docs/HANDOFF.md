@@ -1,26 +1,24 @@
 # FujiCull — Session Handoff
 
-## Where we stopped (end of day, 2026-10-09)
+## Where we stopped (2026-10-10)
 
 **Read this section first.** The original requirements-session handoff is kept below for history.
 
-- **Phases 0–2 are done; phase 3 is code-complete.** Checkpoints A (browse) and B (culling, filmstrip, resume) were passed on the real card. T11 grid, T12 zoom, T13 EXIF + film simulation and T14 RAF-only frames are confirmed by the owner. **T15** (smoother holding of arrows, the strip layout warning fix, open/zoom timing) is built in `e2fe1b9` but not yet verified.
-- **Next step: the checkpoint C test run.** The owner closes any open source (⇧⌘W), opens Fuji SD, turns on View → Show Timings (⌥⌘T), steps ~20 photos, zooms 3–4, holds → for 5–10 s, then reports. Then:
-  1. Read the timings with `/usr/bin/log show --last 30m --info --style compact --predicate 'subsystem == "com.github.corezg.FujiCull"'`. Use the full path: in zsh, `log` is a shell builtin.
-  2. Check that `processID == <pid> AND eventMessage CONTAINS "behavior of the"` returns no strip layout warnings.
-  3. Write `docs/spikes/perf.md` against the NFRs: open < 2 s, next frame < 100 ms, zoom < 300 ms. The last run already showed key→photo median 14 ms, p90 25, 72/75 preloaded.
-  4. Tick T15 and checkpoint C in `tasks/todo.md`.
-- **Then phase 4 (Apply engine).** Run doubt-review round 3 on DESIGN §5.7 first (fresh Claude subagent; the owner has no other models), then T16–T20 test-first.
+- **Phases 0–3 are done.** Checkpoints A (browse), B (culling, filmstrip, resume) and C (viewing speed) were passed on the real card. Checkpoint C's numbers and the two bugs it found are in [`docs/spikes/perf.md`](spikes/perf.md): open 0.55 s, next photo median 19 ms, zoom 99–244 ms, holding → steady at the key-repeat rate. T15's "500 frames" was closed on 379 held frames (longest hold 141), as noted there.
+- **Added 2026-10-10:** a click on the photo while zoomed returns to the whole photo (REQUIREMENTS keymap).
+- **Next step: phase 4 (Apply engine), on the owner's go-ahead.** Run doubt-review round 3 on DESIGN §5.7 first (fresh Claude subagent; the owner has no other models), then T16–T20 test-first.
+- **Reading the timing log:** `/usr/bin/log show --last 30m --style compact --predicate 'subsystem == "com.github.corezg.FujiCull" AND category == "timing"'`. Use the full path: in zsh, `log` is a shell builtin. Lines are `open`, `move`, `zoom` (with read/decode split) and `hold`.
 - **Open items:**
   - **One intermittent test-run crash** (signal 5) during T13. It didn't reproduce in 33 reruns. Watch for it.
   - **T3 hands-on checks:** the SD lock switch (read-only detection), and the volume UUID after an in-camera format.
   - **Coverage baseline:** the owner hasn't approved raising it from 94.2% (now ~96%). CONSTRAINTS.md changes need explicit approval (kept loud).
   - **`.claude/skills/`, `.agents/` and `skills-lock.json`** are still uncommitted; the owner hasn't decided.
-- **Working agreements learned today:**
+- **Working agreements:**
   - Rebuild and relaunch the app (`make app && open build/FujiCull.app`) after every change, so Finder and the Dock get the latest build.
   - Gate commits on `make check`'s real exit status, never through a pipe.
   - The owner prefers native data only; recipe-name inference was declined.
   - Spec changes go into REQUIREMENTS with an "amended" note: R12 (zoom resets on move), R26/R27, Esc, scroll zoom, double-click.
+  - A fix isn't verified until the behaviour around it is checked too: the first strip scroll-bar fix removed the warning and stopped the strip scrolling (2026-10-10).
 
 ---
 

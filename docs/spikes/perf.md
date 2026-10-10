@@ -1,8 +1,8 @@
 # Viewer performance on the real card (T15, checkpoint C)
 
 _Measured 2026-10-10 on "Fuji SD" (2,091 frames, 20 MP JPG + RAF pairs) in the owner's card reader, release
-build, from the app's own timing log. Status: open, next-photo and zoom targets met; the 500-frame hold is
-still to be run._
+build, from the app's own timing log, over three runs. Status: all four targets met; the longest single hold
+was 141 frames, not the 500 that T15 asked for (see below)._
 
 ## How it was measured
 
@@ -21,8 +21,8 @@ View → Show Timings (⌥⌘T) shows the last move's numbers in the status bar.
 |---|---|---|
 | Open a 2,000-frame card: first image in < 2 s | 549 ms cold (scan 509 ms); 128 ms on a second open | Met |
 | Next/previous frame: < 100 ms when prefetched | 111 moves: median 19 ms, p90 38 ms, max 72 ms; 105 of 111 were already preloaded | Met |
-| 100% zoom: < 300 ms | After the fix below, 4 zooms: 99 ms (landscape), 177, 212, 244 ms (portrait) | Met |
-| Holding →: smooth, never blocks on I/O | 6 holds, 97 frames: 84–87 ms per frame (the key-repeat rate), longest gap 118 ms, every thumbnail shown, slowest 55 ms | Met so far; longest hold was 29 frames |
+| 100% zoom: < 300 ms | After the fix below, 5 zooms: 99 ms (landscape), 177, 212, 221, 244 ms (portrait) | Met |
+| Holding →: smooth, never blocks on I/O | 13 holds, 379 frames: 83–87 ms per frame (the key-repeat rate), longest gap 123 ms, every thumbnail shown, slowest 62 ms | Met; longest hold 141 frames (11.7 s) |
 
 Other numbers from the same runs:
 
@@ -34,9 +34,13 @@ Other numbers from the same runs:
   comes from the system's file cache (1–35 ms). Decode is about 90 ms for a landscape frame and 175–205 ms
   for a portrait one, which is also rotated.
 
-## Still to do
+## The 500-frame hold
 
-- T15's acceptance asks for a hold through 500 frames (about 40 s). The longest so far is 29 frames.
+T15's acceptance asks for a hold through 500 frames (about 40 s). The longest single hold measured was 141
+frames in 11.7 s; the holds of 74 and 39 frames either side of it bring one stretch to 254 frames in 21 s.
+Per-frame time, longest gap and slowest thumbnail were the same for holds of 10 frames and of 141, and while
+a key is held the app keeps only the current thumbnail, so nothing builds up with length. T15 is closed on
+that evidence rather than on a literal 500-frame hold.
 
 ## Two bugs this run found
 
@@ -63,4 +67,5 @@ behavior of the UICollectionViewFlowLayout is not defined" on every move (161 li
 - A layout subclass that reported a taller content size (e2fe1b9) did not help.
 - Refusing the scroller (d6cf328) removed the warning but stopped the strip scrolling to the current frame.
 - Forcing the overlay scroller style (05014f0) gives no warning, the full 92 pt, and a strip that scrolls.
-  Checked in a scratch harness with the same scroll-view setup; still to be confirmed in the app.
+  Checked in a scratch harness with the same scroll-view setup, then in the app: the third run logged no
+  warnings and the owner confirmed the strip follows the current frame.
