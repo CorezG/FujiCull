@@ -132,6 +132,27 @@ public struct CullSession: Equatable, Sendable {
         settleCursor(from: cursor)
     }
 
+    /// The session once Apply has deleted `deleted` from the card (SR21). Every other frame keeps its
+    /// decision and its undo history; undo steps for the deleted frames go with them, because there is
+    /// nothing left to undo. The cursor stays on the same photo, or moves to the next one left.
+    public func removing(_ deleted: Set<FrameID>) -> CullSession {
+        guard !deleted.isEmpty else { return self }
+        var newIndex: [Int: Int] = [:]
+        var kept: [FrameID] = []
+        for (index, id) in frameIDs.enumerated() where !deleted.contains(id) {
+            newIndex[index] = kept.count
+            kept.append(id)
+        }
+        let landing =
+            (cursor..<frameIDs.count).first { newIndex[$0] != nil }
+            ?? (0..<min(cursor, frameIDs.count)).last { newIndex[$0] != nil }
+        var next = CullSession(
+            frameIDs: kept, marks: marks, autoAdvance: autoAdvance, cursor: landing.map { frameIDs[$0] },
+            undecidedOnly: undecidedOnly)
+        next.undoStack = undoStack.compactMap { step in newIndex[step.frame].map { ($0, step.previous) } }
+        return next
+    }
+
     private mutating func undo() {
         guard let last = undoStack.popLast() else { return }
         setMark(last.previous, for: frameIDs[last.frame])

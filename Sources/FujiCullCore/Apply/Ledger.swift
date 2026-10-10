@@ -163,6 +163,19 @@ public struct Ledger: Equatable, Sendable {
     /// Card deletions with no recorded outcome.
     public var unsettledDeletes: [String] { cardFiles.filter { $0.value == .deleting }.keys.sorted() }
 
+    /// The FrameIDs of every card file that was, or was about to be, deleted. A pair's FrameID is its
+    /// path without the extension; a split orphan's is the whole path, so both forms are included.
+    public var framesDeletedFromCard: Set<FrameID> {
+        var ids: Set<FrameID> = []
+        for path in cardFiles.keys {
+            ids.insert(FrameID(path))
+            if let dot = path.lastIndex(of: "."), let slash = path.lastIndex(of: "/"), dot > slash {
+                ids.insert(FrameID(String(path[..<dot])))
+            }
+        }
+        return ids
+    }
+
     // MARK: Binding (SR2)
 
     /// Among `candidates` (one owner's files), the archive file the journal proves FujiCull wrote for

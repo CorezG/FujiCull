@@ -132,6 +132,15 @@ public actor SessionStore {
         if FileManager.default.fileExists(atPath: ledger.path) { try write(Data(), to: ledger) }
     }
 
+    /// Where the open card's Apply journal lives (DESIGN §5.7, Ledger).
+    public func ledgerURL() throws -> URL {
+        guard let key else { throw StoreError.notOpen }
+        return ledgers.appendingPathComponent("\(key).jsonl")
+    }
+
+    /// The folder FujiCull keeps its lock files in.
+    public var locksDirectory: URL { locks }
+
     // MARK: Internals
 
     private func sessionURL(_ key: String) -> URL { sessions.appendingPathComponent("\(key).json") }

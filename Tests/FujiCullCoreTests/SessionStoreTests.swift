@@ -205,6 +205,20 @@ private func snapshot(_ root: URL) throws -> [String: Int] {
     }
 }
 
+@Suite struct SessionStoreApplyTests {
+    @Test func theOpenCardsJournalSitsBesideItsSession() async throws {
+        let tree = try TempTree()
+        let store = SessionStore(directory: tree.root, debounce: .zero)
+
+        await #expect(throws: SessionStore.StoreError.notOpen) { try await store.ledgerURL() }
+        _ = try await store.open(key: "vol-ABC")
+
+        #expect(try await store.ledgerURL() == tree.url("Ledger/vol-ABC.jsonl"))
+        #expect(await store.locksDirectory == tree.url("Locks"))
+        try await store.close()
+    }
+}
+
 // SessionKey: one key per card however it was opened (SR1).
 @Suite struct SessionKeyTests {
 

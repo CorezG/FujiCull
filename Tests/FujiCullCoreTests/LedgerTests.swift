@@ -145,6 +145,23 @@ private func verified(_ location: ArchiveLocation, by owner: Owner = frame1, as 
         #expect(ledger.cardFileStatus("DCIM/124_FUJI/DSCF0001.JPG") == nil)
     }
 
+    @Test func framesWithADeletedCardFileAreKnownByFrameID() {
+        // So a session restore doesn't count them as missing (SR4): the pair's FrameID has no extension,
+        // a split orphan's is the whole file name.
+        let ledger = Ledger([
+            .deleting(path: "DCIM/124_FUJI/DSCF0003.RAF"), .deleted(path: "DCIM/124_FUJI/DSCF0003.RAF"),
+            .deleting(path: "DCIM/124_FUJI/DSCF0004.JPG"),
+        ])
+
+        #expect(
+            ledger.framesDeletedFromCard == [
+                FrameID("DCIM/124_FUJI/DSCF0003"), FrameID("DCIM/124_FUJI/DSCF0003.RAF"),
+                FrameID("DCIM/124_FUJI/DSCF0004"),
+                FrameID("DCIM/124_FUJI/DSCF0004.JPG"),
+            ])
+        #expect(Ledger().framesDeletedFromCard.isEmpty)
+    }
+
     // MARK: Tags are their own family (SR12)
 
     @Test func aTagRecordDoesNotChangeTheFilesState() {

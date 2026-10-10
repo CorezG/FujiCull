@@ -16,6 +16,50 @@ private func applying(_ commands: [CullCommand], to start: CullSession) -> CullS
 // The keymap's session rules (REQUIREMENTS §4.2–4.3, R7–R11; DESIGN §5.2, D3, D4).
 @Suite struct CullSessionTests {
 
+    // MARK: After Apply deleted frames from the card (SR21)
+
+    @Test func removingDeletedFramesKeepsEveryOtherDecisionAndTheFilter() {
+        var s = session(5)
+        s.apply(.keep)  // 0
+        s.apply(.reject)  // 1
+        s.apply(.reject)  // 2
+        s.apply(.toggleFavourite)  // 3: favourite, cursor stays
+
+        let after = s.removing([s.frameIDs[1], s.frameIDs[2]])
+
+        #expect(after.frameIDs == [s.frameIDs[0], s.frameIDs[3], s.frameIDs[4]])
+        #expect(after.mark(at: 0).decision == .keep)
+        #expect(after.mark(at: 1) == FrameMark(decision: .keep, isFavourite: true))
+        #expect(after.counts == CullCounts(keep: 2, reject: 0, undecided: 1, favourite: 1))
+        #expect(after.currentFrameID == s.frameIDs[3], "the cursor stays on the same photo")
+    }
+
+    @Test func undoHistoryForFramesStillOnTheCardSurvivesAnApply() {
+        var s = session(4)
+        s.apply(.keep)  // 0
+        s.apply(.reject)  // 1
+        s.apply(.keep)  // 2
+
+        var after = s.removing([s.frameIDs[1]])
+        after.apply(.undo)  // undoes the keep on old frame 2
+
+        #expect(after.mark(at: 1) == FrameMark(), "old frame 2 is now at index 1")
+        #expect(after.currentFrameID == s.frameIDs[2])
+        after.apply(.undo)  // the reject's undo step went with its frame; this undoes the keep on frame 0
+        #expect(after.mark(at: 0) == FrameMark())
+        #expect(!after.canUndo)
+    }
+
+    @Test func whenTheFrameUnderTheCursorIsDeletedTheCursorMovesToTheNextOneLeft() {
+        var s = session(4)
+        s.apply(.goTo(2))
+
+        #expect(s.removing([s.frameIDs[2]]).currentFrameID == s.frameIDs[3])
+        #expect(s.removing([s.frameIDs[2], s.frameIDs[3]]).currentFrameID == s.frameIDs[1])
+        #expect(s.removing(Set(s.frameIDs)).currentFrameID == nil)
+        #expect(s.removing([]) == s)
+    }
+
     // MARK: Restored decisions that turn out not to belong (SR2)
 
     @Test func discardingARestoredMarkReturnsTheFrameToUndecidedWithNoUndoStep() {
