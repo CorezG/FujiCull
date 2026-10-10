@@ -23,13 +23,13 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ## Phase 1 — Browse slice
 
-### - [ ] T2: SourceScanner — find, pair, order (R1–R5, D1)
+### - [x] T2: SourceScanner — find, pair, order (R1–R5, D1)
 **Description:** Implement `Frame`, `FrameID`, `SourceFile` and `SourceScanner` as in §5.1. It scans `DCIM/*` (or the chosen folder), pairs files case-insensitively by folder and base name, flags orphans, skips junk, and orders by folder then filename (numeric-aware). It also records a size and mtime snapshot for each file.
 **Safety rules:** SR1 (whole-volume scan; frames, videos, other files), SR2 (FrameID relative to volume root; split orphans keep exact filenames).
 **Acceptance:**
-- [ ] Tests cover: pairs, JPG-only and RAF-only orphans, mixed case, `._*` / `.Trashes` / `.Spotlight-V100` / `.fseventsd` / non-image files ignored, a counter wrap across `100_FUJI` → `101_FUJI`, a non-DCIM folder, and duplicates that differ only in case.
-- [ ] `.MOV`/`.MP4` files (any case) come back as video items, not frames, and other non-photo files come back in an "other files" list (R5, R27).
-- [ ] A 2,000-pair synthetic tree scans in under 200 ms on this Mac (measured in a test).
+- [x] Tests cover: pairs, JPG-only and RAF-only orphans, mixed case, `._*` / `.Trashes` / `.Spotlight-V100` / `.fseventsd` / non-image files ignored, a counter wrap across `100_FUJI` → `101_FUJI`, a non-DCIM folder, and duplicates that differ only in case.
+- [x] `.MOV`/`.MP4` files (any case) come back as video items, not frames, and other non-photo files come back in an "other files" list (R5, R27).
+- [x] A 2,000-pair synthetic tree scans in under 200 ms on this Mac (measured in a test).
 **Verify:** `make test`
 **Depends on:** T1
 **Files:** `Sources/FujiCullCore/Scan/{Frame,SourceScanner}.swift`, `Tests/FujiCullCoreTests/SourceScannerTests.swift`, a test helper for building temp trees
