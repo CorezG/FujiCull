@@ -11,6 +11,11 @@ final class ViewerNSView: NSView {
         didSet { layer?.contents = image }
     }
 
+    /// Rejected frames are shown dimmed, as in the prototype.
+    var dimmed = false {
+        didSet { layer?.opacity = dimmed ? 0.55 : 1 }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
@@ -43,17 +48,20 @@ final class ViewerNSView: NSView {
 
 struct ViewerRepresentable: NSViewRepresentable {
     let image: CGImage?
+    let dimmed: Bool
     let onKey: (NSEvent) -> Bool
 
     func makeNSView(context: Context) -> ViewerNSView {
         let view = ViewerNSView()
         view.onKey = onKey
         view.image = image
+        view.dimmed = dimmed
         return view
     }
 
     func updateNSView(_ view: ViewerNSView, context: Context) {
         view.onKey = onKey
         if view.image !== image { view.image = image }
+        if view.dimmed != dimmed { view.dimmed = dimmed }
     }
 }

@@ -23,7 +23,14 @@ final class CullModel {
     private(set) var detectedCards: [URL] = []
     private(set) var sourceName = ""
     private(set) var frames: [Frame] = []
-    private(set) var cursor = 0
+    /// Decisions, cursor, filter and undo (DESIGN §5.2).
+    private(set) var session = CullSession(frameIDs: [])
+    /// View toggles owned by the app (REQUIREMENTS §4.3): zoom (T12), grid (T11), EXIF line (T13).
+    private(set) var isZoomed = false
+    private(set) var isGrid = false
+    private(set) var showsExif = true
+    /// Brief confirmation after a decision; `id` changes every time so the view can re-trigger it.
+    private(set) var flash: (symbol: String, id: Int)?
     /// The best image available for the current frame: the T1 display image, or its T0 thumbnail meanwhile.
     private(set) var currentImage: CGImage?
     private(set) var currentIsDisplayQuality = false
@@ -54,7 +61,18 @@ final class CullModel {
             })
     }
 
-    var currentFrame: Frame? { frames.indices.contains(cursor) ? frames[cursor] : nil }
+    var cursor: Int { session.cursor }
+
+    /// The frame on screen, or nil when the Undecided-only list is empty.
+    var currentFrame: Frame? { session.currentFrameID == nil ? nil : frames[session.cursor] }
+
+    var currentMark: FrameMark { frames.isEmpty ? FrameMark() : session.mark(at: session.cursor) }
+
+    /// 1-based position within the frames being browsed, and how many there are.
+    var position: (index: Int, count: Int) {
+        let visible = session.visibleIndices
+        return ((visible.firstIndex(of: session.cursor) ?? -1) + 1, visible.count)
+    }
 
     func refreshCards() {
         detectedCards = SourceLocator.cameraCards(among: SourceLocator.mountedVolumes())
@@ -75,7 +93,7 @@ final class CullModel {
             identityBase = base
             sourceVolume = try? folder.resourceValues(forKeys: [.volumeURLKey]).volume
             frames = result.frames
-            cursor = 0
+            session = CullSession(frameIDs: result.frames.map(\.id))
             phase = .browsing
             showCurrent()
         } catch {
@@ -89,7 +107,10 @@ final class CullModel {
         let reader = reader
         Task { await reader.cancelPending(except: []) }
         frames = []
-        cursor = 0
+        session = CullSession(frameIDs: [])
+        isZoomed = false
+        isGrid = false
+        flash = nil
         currentImage = nil
         currentIsDisplayQuality = false
         displayCache.removeAll()
@@ -113,19 +134,59 @@ final class CullModel {
         }
     }
 
-    // MARK: Navigation
+    // MARK: Commands
 
-    func move(by delta: Int) {
-        guard phase == .browsing, !frames.isEmpty else { return }
-        let target = min(max(cursor + delta, 0), frames.count - 1)
-        guard target != cursor else { return }
-        cursor = target
-        showCurrent()
+    /// The single entry point for keys and menu items (ADR-006), so each fires exactly once.
+    func perform(_ action: KeyAction) {
+        guard phase == .browsing else { return }
+        switch action {
+        case .cull(let command):
+            let before = (cursor: session.cursor, frame: session.currentFrameID, mark: currentMark)
+            session.apply(command)
+            if let frame = before.frame, let index = frames.firstIndex(where: { $0.id == frame }),
+                session.mark(at: index) != before.mark
+            {
+                flash(for: command, mark: session.mark(at: index))
+            }
+            if session.cursor != before.cursor || session.currentFrameID != before.frame { showCurrent() }
+        case .toggleZoom, .toggleGrid, .toggleExif:
+            guard canPerform(action) else { return }
+            switch action {
+            case .toggleZoom: isZoomed.toggle()
+            case .toggleGrid: isGrid.toggle()
+            default: showsExif.toggle()
+            }
+        }
+    }
+
+    func canPerform(_ action: KeyAction) -> Bool {
+        guard phase == .browsing else { return false }
+        switch action {
+        case .cull(.undo): return session.canUndo
+        case .cull: return !frames.isEmpty
+        // Shown in the menus now so the keymap is complete; their views arrive in T11 (grid),
+        // T12 (zoom) and T13 (EXIF line).
+        case .toggleZoom, .toggleGrid, .toggleExif: return false
+        }
+    }
+
+    private func flash(for command: CullCommand, mark: FrameMark) {
+        let symbol: String
+        switch command {
+        case .keep: symbol = "✓"
+        case .reject: symbol = "✕"
+        case .toggleFavourite: symbol = mark.isFavourite ? "♥" : "♡"
+        default: return
+        }
+        flash = (symbol, (flash?.id ?? 0) + 1)
     }
 
     /// Shows the best cached image for the cursor, then asks the reader for what's missing around it.
     private func showCurrent() {
-        guard let frame = currentFrame else { return }
+        guard let frame = currentFrame else {
+            currentImage = nil
+            return
+        }
         if let image = displayCache.value(for: frame.id) {
             currentImage = image
             currentIsDisplayQuality = true
@@ -134,12 +195,17 @@ final class CullModel {
             currentIsDisplayQuality = false
         }
 
-        let window = PrefetchWindow.requests(cursor: cursor, count: frames.count)
+        // Prefetch through the frames being browsed, so the Undecided-only filter skips decided ones.
+        let visible = session.visibleIndices
+        let position = visible.firstIndex(of: session.cursor) ?? 0
+        let window = PrefetchWindow.requests(cursor: position, count: visible.count).map {
+            (index: visible[$0.index], priority: $0.priority)
+        }
         let keep = Set(window.flatMap { [key(.thumbnail, frames[$0.index].id), key(.display, frames[$0.index].id)] })
         let reader = reader
         Task { await reader.cancelPending(except: keep) }
 
-        if currentImage == nil { request(.thumbnail, index: cursor, priority: .current) }
+        if currentImage == nil { request(.thumbnail, index: session.cursor, priority: .current) }
         for item in window { request(.display, index: item.index, priority: item.priority) }
     }
 

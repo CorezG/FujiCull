@@ -60,47 +60,134 @@ struct StartView: View {
     }
 }
 
-/// The photo with a small overlay: filename and position (T6; counts and EXIF arrive in T8 and T13).
+/// The photo with the overlay from R16: filename, decision, ♥, position and counts.
 struct BrowseView: View {
     let model: CullModel
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            ViewerRepresentable(image: model.currentImage, onKey: handle)
+            ViewerRepresentable(
+                image: model.currentImage, dimmed: model.currentMark.decision == .reject, onKey: handle)
             if let frame = model.currentFrame {
-                HStack {
-                    Text(Self.filename(of: frame)).font(.system(size: 12, design: .monospaced))
-                    if frame.isUnpaired {
-                        Text(frame.jpg == nil ? "RAF only" : "JPG only")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.yellow)
-                    }
-                    Spacer()
-                    Text("\(model.cursor + 1) / \(model.frames.count)")
-                        .font(.system(size: 12, design: .monospaced)).monospacedDigit()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-                .padding(14)
+                StatusBar(frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position)
+                    .padding(14)
+            } else if model.session.undecidedOnly && !model.frames.isEmpty {
+                EmptyFilterMessage()
             } else {
                 Text("No photos found in \(model.sourceName).").foregroundStyle(.secondary).padding(40)
             }
+            if model.session.undecidedOnly, model.currentFrame != nil {
+                Text("Showing undecided only, \(model.position.count) left")
+                    .font(.system(size: 12)).foregroundStyle(Color(red: 0.62, green: 0.8, blue: 1))
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.18), in: Capsule())
+                    .frame(maxHeight: .infinity, alignment: .top).padding(.top, 12)
+            }
+            DecisionFlash(flash: model.flash)
         }
     }
 
     private func handle(_ event: NSEvent) -> Bool {
-        switch event.keyCode {
-        case 123:
-            model.move(by: -1)
-            return true
-        case 124:
-            model.move(by: 1)
-            return true
-        default:
-            return false
+        let flags = event.modifierFlags
+        let press = KeyPress(
+            keyCode: event.keyCode, characters: event.charactersIgnoringModifiers ?? "",
+            shift: flags.contains(.shift), command: flags.contains(.command), control: flags.contains(.control),
+            option: flags.contains(.option))
+        guard let action = KeyMap.action(for: press) else { return false }
+        model.perform(action)
+        return true
+    }
+}
+
+private struct StatusBar: View {
+    let frame: Frame
+    let mark: FrameMark
+    let counts: CullCounts
+    let position: (index: Int, count: Int)
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(BrowseView.filename(of: frame)).font(.system(size: 12, design: .monospaced))
+            DecisionChip(mark: mark)
+            if frame.isUnpaired {
+                Text(frame.jpg == nil ? "RAF only" : "JPG only")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(.yellow)
+            }
+            Spacer()
+            Text("\(counts.keep) kept").foregroundStyle(Color(red: 0.19, green: 0.82, blue: 0.35))
+            Text("\(counts.reject) rejected").foregroundStyle(Color(red: 1, green: 0.27, blue: 0.23))
+            Text("\(counts.undecided) undecided").foregroundStyle(.secondary)
+            Text("\(position.index) / \(position.count)").padding(.leading, 6)
         }
+        .font(.system(size: 12, design: .monospaced))
+        .monospacedDigit()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct DecisionChip: View {
+    let mark: FrameMark
+
+    var body: some View {
+        let (label, colour): (String, Color) =
+            switch mark.decision {
+            case .keep: ("Keep", Color(red: 0.19, green: 0.82, blue: 0.35))
+            case .reject: ("Reject", Color(red: 1, green: 0.27, blue: 0.23))
+            case .undecided: ("Undecided", Color(white: 0.78))
+            }
+        HStack(spacing: 4) {
+            if mark.isFavourite { Text("♥").foregroundStyle(Color(red: 1, green: 0.22, blue: 0.37)) }
+            Text(label)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(colour)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(colour.opacity(0.16), in: Capsule())
+    }
+}
+
+/// A brief ✓ / ✕ / ♥ after a decision, so a keypress is acknowledged even before the next frame loads.
+private struct DecisionFlash: View {
+    let flash: (symbol: String, id: Int)?
+    @State private var visible = false
+
+    var body: some View {
+        Text(flash?.symbol ?? "")
+            .font(.system(size: 46, weight: .medium))
+            .foregroundStyle(colour)
+            .frame(width: 92, height: 92)
+            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 22))
+            .opacity(visible ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .onChange(of: flash?.id) {
+                visible = true
+                withAnimation(.easeOut(duration: 0.4).delay(0.08)) { visible = false }
+            }
     }
 
+    private var colour: Color {
+        switch flash?.symbol {
+        case "✓": Color(red: 0.19, green: 0.82, blue: 0.35)
+        case "✕": Color(red: 1, green: 0.27, blue: 0.23)
+        default: Color(red: 1, green: 0.22, blue: 0.37)
+        }
+    }
+}
+
+private struct EmptyFilterMessage: View {
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("Every frame has a decision").font(.system(size: 16, weight: .semibold))
+            Text("Press ' to show all frames again.").foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension BrowseView {
     static func filename(of frame: Frame) -> String {
         let path = frame.jpg?.relativePath ?? frame.raf?.relativePath ?? frame.id.rawValue
         return (path as NSString).lastPathComponent

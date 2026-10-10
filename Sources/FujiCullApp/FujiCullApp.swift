@@ -1,3 +1,4 @@
+import FujiCullCore
 import SwiftUI
 
 @main
@@ -17,6 +18,39 @@ struct FujiCullApp: App {
                     .keyboardShortcut("w", modifiers: [.command, .shift])
                     .disabled(model.phase != .browsing)
             }
+            CommandGroup(replacing: .undoRedo) {
+                item("Undo Decision", .cull(.undo), "z", [.command])
+            }
+            // Every key is also a menu item, so the shortcuts can be discovered (R13).
+            CommandMenu("Cull") {
+                item("Keep", .cull(.keep), .upArrow)
+                item("Reject", .cull(.reject), .downArrow)
+                item("Toggle Favourite", .cull(.toggleFavourite), "/")
+                item("Reset to Undecided", .cull(.reset), ".")
+                Divider()
+                item("Undo Last Decision", .cull(.undo), .delete)
+                Divider()
+                item("Show Only Undecided", .cull(.toggleUndecidedFilter), "\'")
+            }
+            CommandGroup(before: .toolbar) {
+                item("Previous Frame", .cull(.previous), .leftArrow)
+                item("Next Frame", .cull(.next), .rightArrow)
+                item("Back 10 Frames", .cull(.jump(-10)), .leftArrow, [.shift])
+                item("Forward 10 Frames", .cull(.jump(10)), .rightArrow, [.shift])
+                Divider()
+                item("Zoom to 100%", .toggleZoom, .return)
+                item("Grid", .toggleGrid, "g")
+                item("Show EXIF", .toggleExif, "i")
+                Divider()
+            }
         }
+    }
+
+    private func item(
+        _ title: String, _ action: KeyAction, _ key: KeyEquivalent, _ modifiers: EventModifiers = []
+    ) -> some View {
+        Button(title) { model.perform(action) }
+            .keyboardShortcut(key, modifiers: modifiers)
+            .disabled(!model.canPerform(action))
     }
 }
