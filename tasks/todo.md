@@ -139,21 +139,22 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ## Phase 3 — Viewing polish
 
-### - [ ] T11: Grid view toggle (G) (R15)
+### - [x] T11: Grid view toggle (G) (R15)
 **Description:** A wrapping `NSCollectionView` grid with the same cells and badges. G toggles between the grid and the single view. Every key acts on the selected cell, and the selection is the cursor.
 **Acceptance:**
-- [ ] G toggles views without losing the cursor.
-- [ ] ↑, ↓, /, . and ⌫ work in the grid, and the arrow keys move the selection.
+- [x] G toggles views without losing the cursor.
+- [x] ↑, ↓, /, . and ⌫ work in the grid, and the arrow keys move the selection.
 **Verify:** Manual
 **Depends on:** T10
 **Files:** `Sources/FujiCullApp/Viewer/GridView.swift`, `ViewerController.swift`, `KeyMap.swift`
 **Scope:** S
 
-### - [ ] T12: 100% zoom (Return) with mouse-follow and T2 prefetch (R12, D5)
+### - [x] T12: 100% zoom (Return) with mouse-follow and T2 prefetch (R12, D5)
 **Description:** Return toggles between fit and 100% (1 image pixel per device pixel). The pan position follows the mouse. Zoom stays on when moving between frames, and +1's T2 is prefetched while zoomed. The T2 cache (two frames at most) is cleared when zoom is turned off.
+**Added at the owner's request (2026-10-09):** scroll-wheel and trackpad-pinch zoom from fit up to 200%, about the point under the mouse; the zoom level (not just on/off) persists across frames. Grid: double-click opens a frame, like Return.
 **Acceptance:**
-- [ ] Zoom is under 300 ms when the frame was prefetched; the cold-zoom time is measured and noted.
-- [ ] Memory stays under ~500 MB while zoomed.
+- [x] Zoom is under 300 ms when the frame was prefetched; the cold-zoom time is measured and noted.
+- [x] Memory stays under ~500 MB while zoomed.
 **Verify:** Manual + signpost timings
 **Depends on:** T10
 **Files:** `ViewerView.swift`, `Sources/FujiCullImaging/PreviewPipeline.swift`, `PreviewCache.swift`

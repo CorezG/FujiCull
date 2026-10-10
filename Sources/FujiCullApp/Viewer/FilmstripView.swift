@@ -49,6 +49,7 @@ struct FilmstripView: NSViewRepresentable {
         collection.dataSource = context.coordinator
         context.coordinator.collection = collection
         context.coordinator.scrollPosition = style == .strip ? .centeredHorizontally : .nearestHorizontalEdge
+        context.coordinator.opensOnDoubleClick = style == .grid
 
         let scroll = NSScrollView()
         scroll.documentView = collection
@@ -88,6 +89,8 @@ final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
     private let model: CullModel
     weak var collection: NSCollectionView?
     var scrollPosition: NSCollectionView.ScrollPosition = .centeredHorizontally
+    /// Grid only: a double-click opens the frame in the single view, like Return.
+    var opensOnDoubleClick = false
     private var shownCount = -1
     private var shownCursor = -1
 
@@ -134,18 +137,23 @@ final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
         item.cell.show(
             image: model.thumbnailImage(at: index), mark: session.mark(at: index), isCurrent: index == session.cursor,
             isHidden: session.undecidedOnly && session.mark(at: index).decision != .undecided)
-        item.onClick = { [weak self] in self?.model.perform(.cull(.goTo(index))) }
+        item.onClick = { [weak self] clicks in
+            guard let self else { return }
+            model.perform(.cull(.goTo(index)))
+            if clicks == 2, opensOnDoubleClick { model.perform(.toggleZoom) }
+        }
     }
 }
 
 final class FilmstripItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("FilmstripItem")
     let cell = FilmstripCell()
-    var onClick: (() -> Void)?
+    /// Called with the click count: 1 selects, 2 also opens the frame from the grid.
+    var onClick: ((Int) -> Void)?
 
     override func loadView() {
         view = cell
-        cell.onClick = { [weak self] in self?.onClick?() }
+        cell.onClick = { [weak self] clicks in self?.onClick?(clicks) }
     }
 }
 
@@ -155,7 +163,7 @@ final class FilmstripCell: NSView {
     static let width: CGFloat = 86
     static let height: CGFloat = 64
 
-    var onClick: (() -> Void)?
+    var onClick: ((Int) -> Void)?
     private let imageLayer = CALayer()
     private let barLayer = CALayer()
     private let heartLayer = CATextLayer()
@@ -207,6 +215,6 @@ final class FilmstripCell: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onClick?()
+        onClick?(event.clickCount)
     }
 }
