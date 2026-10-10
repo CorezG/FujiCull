@@ -11,3 +11,4 @@ the Fuji MakerNote. The image data after it is cut off.
 | `DSCF3406-head64k.JPG` | 6 (portrait, rotate 90° clockwise) | 1/900 s, f/8, ISO 500, 23 mm, 2026:09:20 05:09:05 | Its thumbnail is stored sideways |
 | `DSCF4006-head64k.JPG` | 6 (portrait) | 1/150 s, f/5.6, ISO 250, 23 mm, Astia (FilmMode 0x120) | Added in T13 |
 | `DSCF4136-head64k.JPG` | 6 (portrait) | 1/100 s, f/1.4, ISO 1250, 23 mm, Acros + Ye (no FilmMode; Saturation 0x502) | Added in T13 |
+| `DSCF3404-head70k.RAF` | (RAF) | The first 70,000 bytes of DSCF3404.RAF: the `FUJIFILMCCD-RAW` header and the start of the embedded JPEG (offset 148, 4,857,388 bytes long), enough for its EXIF and thumbnail | Added in T14 |

@@ -47,6 +47,41 @@ private func fixtureURL(_ name: String) -> URL {
         #expect(ThumbnailLoader.decodeThumbnail(Data("nope".utf8), orientation: 1) == nil)
     }
 
+    @Test func aRAFOnlyFrameGetsItsThumbnailFromTheEmbeddedJPEG() throws {
+        let t0 = try ThumbnailLoader.load(fixtureURL("DSCF3404-head70k.RAF"))
+
+        let image = try #require(t0.image)
+        #expect(image.width == 160 && image.height == 120)
+        #expect(t0.exif.filmSimulation == "Classic Chrome")
+    }
+
+    @Test func theDisplayImageOfARAFIsItsEmbeddedJPEG() throws {
+        let tree = try TempFolder()
+        let jpeg = try Data(contentsOf: try syntheticJPEGFile(in: tree))
+        var raf = Data("FUJIFILMCCD-RAW ".utf8) + Data(repeating: 0, count: 144)
+        let offset = UInt32(raf.count)
+        let length = UInt32(jpeg.count)
+        for (index, value) in [(84, offset), (88, length)] {
+            raf[index] = UInt8(value >> 24)
+            raf[index + 1] = UInt8((value >> 16) & 0xFF)
+            raf[index + 2] = UInt8((value >> 8) & 0xFF)
+            raf[index + 3] = UInt8(value & 0xFF)
+        }
+        raf += jpeg + Data(repeating: 0x55, count: 1_000)  // raw data would follow
+        let url = tree.url.appendingPathComponent("DSCF9999.RAF")
+        try raf.write(to: url)
+
+        #expect(try PreviewPipeline.readJPEG(url) == jpeg)
+        #expect(try ThumbnailLoader.load(url).image != nil)
+    }
+
+    @Test func readingAJPEGFileReturnsTheWholeFile() throws {
+        let tree = try TempFolder()
+        let url = try syntheticJPEGFile(in: tree)
+
+        #expect(try PreviewPipeline.readJPEG(url) == Data(contentsOf: url))
+    }
+
     @Test func aMissingFileThrows() {
         #expect(throws: (any Error).self) {
             try ThumbnailLoader.load(URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString).JPG"))
@@ -178,6 +213,12 @@ private func writeJPEG(to url: URL, orientation: Int) throws {
     ]
     CGImageDestinationAddImage(destination, image, properties as CFDictionary)
     #expect(CGImageDestinationFinalize(destination))
+}
+
+private func syntheticJPEGFile(in tree: TempFolder) throws -> URL {
+    let url = tree.url.appendingPathComponent("synthetic-\(UUID().uuidString).JPG")
+    try writeJPEG(to: url, orientation: 1)
+    return url
 }
 
 /// A temporary folder removed when released.

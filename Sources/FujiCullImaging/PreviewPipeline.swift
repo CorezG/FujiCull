@@ -1,11 +1,26 @@
 import CoreGraphics
 import Foundation
+import FujiCullCore
 import ImageIO
 
 /// T1, the display tier: the whole JPG decoded to fit the window (DESIGN §5.4).
 public enum PreviewPipeline {
     public enum DecodeError: Error, Equatable {
         case notAnImage
+    }
+
+    /// The JPEG to show for a file: the whole file for a JPG, or the full-size preview embedded in a RAF,
+    /// so RAF-only frames can be shown (R4). Blocking: call it through `CardReader`.
+    public static func readJPEG(_ url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let head = try handle.read(upToCount: RAFHeader.size) ?? Data()
+        guard RAFHeader.isRAF(head) else { return head + (try handle.readToEnd() ?? Data()) }
+        guard let raf = RAFHeader.parse(head) else { throw DecodeError.notAnImage }
+        try handle.seek(toOffset: UInt64(raf.jpegOffset))
+        let jpeg = try handle.read(upToCount: raf.jpegLength) ?? Data()
+        guard jpeg.count == raf.jpegLength else { throw DecodeError.notAnImage }
+        return jpeg
     }
 
     /// Decodes every pixel of `jpeg`, upright.

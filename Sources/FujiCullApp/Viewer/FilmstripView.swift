@@ -143,9 +143,11 @@ final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
         guard model.frames.indices.contains(index) else { return }
         let session = model.session
         if !model.hasThumbnail(at: index) { model.requestThumbnail(at: index) }
+        let frame = model.frames[index]
         item.cell.show(
             image: model.thumbnailImage(at: index), mark: session.mark(at: index), isCurrent: index == session.cursor,
-            isHidden: session.undecidedOnly && session.mark(at: index).decision != .undecided)
+            isHidden: session.undecidedOnly && session.mark(at: index).decision != .undecided,
+            unpaired: frame.isUnpaired ? (frame.jpg == nil ? "RAF" : "JPG") : nil)
         item.onClick = { [weak self] clicks in
             guard let self else { return }
             model.perform(.cull(.goTo(index)))
@@ -176,6 +178,8 @@ final class FilmstripCell: NSView {
     private let imageLayer = CALayer()
     private let barLayer = CALayer()
     private let heartLayer = CATextLayer()
+    /// "RAF" or "JPG" on an unpaired frame (R4).
+    private let badgeLayer = CATextLayer()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.height))
@@ -194,6 +198,13 @@ final class FilmstripCell: NSView {
         heartLayer.alignmentMode = .right
         heartLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
         layer.addSublayer(heartLayer)
+        badgeLayer.fontSize = 9
+        badgeLayer.foregroundColor = NSColor.black.cgColor
+        badgeLayer.backgroundColor = NSColor.systemYellow.cgColor
+        badgeLayer.cornerRadius = 3
+        badgeLayer.alignmentMode = .center
+        badgeLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        layer.addSublayer(badgeLayer)
     }
 
     required init?(coder: NSCoder) {
@@ -205,9 +216,10 @@ final class FilmstripCell: NSView {
         imageLayer.frame = bounds
         barLayer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 3)
         heartLayer.frame = NSRect(x: bounds.width - 18, y: bounds.height - 16, width: 15, height: 14)
+        badgeLayer.frame = NSRect(x: 4, y: bounds.height - 15, width: 26, height: 12)
     }
 
-    func show(image: CGImage?, mark: FrameMark, isCurrent: Bool, isHidden: Bool) {
+    func show(image: CGImage?, mark: FrameMark, isCurrent: Bool, isHidden: Bool, unpaired: String? = nil) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         imageLayer.contents = image
@@ -218,6 +230,8 @@ final class FilmstripCell: NSView {
         case .undecided: barLayer.backgroundColor = NSColor.clear.cgColor
         }
         heartLayer.isHidden = !mark.isFavourite
+        badgeLayer.string = unpaired
+        badgeLayer.isHidden = unpaired == nil
         layer?.borderWidth = isCurrent ? 2 : 0
         alphaValue = isHidden ? 0.18 : 1
         CATransaction.commit()

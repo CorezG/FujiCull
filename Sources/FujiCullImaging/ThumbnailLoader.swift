@@ -39,15 +39,26 @@ public enum ThumbnailLoader {
         decode(jpeg).flatMap { oriented($0, orientation: orientation) }
     }
 
-    /// Reads only the start of the file and returns the thumbnail still compressed, plus EXIF.
+    /// Reads only the start of the file and returns the thumbnail still compressed, plus EXIF. For a RAF,
+    /// reads the start of its embedded JPEG instead (RAF-only frames, R4).
     public static func loadHeader(_ url: URL) throws -> ThumbnailHeader {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var head = try handle.read(upToCount: firstRead) ?? Data()
+        // The JPEG to parse: the file itself, or the preview embedded in a RAF, which may not run to the end.
+        var jpegLimit = Int.max
+        if RAFHeader.isRAF(head) {
+            guard let raf = RAFHeader.parse(head) else {
+                return ThumbnailHeader(thumbnailJPEG: nil, exif: ExifSummary())
+            }
+            try handle.seek(toOffset: UInt64(raf.jpegOffset))
+            jpegLimit = raf.jpegLength
+            head = try handle.read(upToCount: min(firstRead, jpegLimit)) ?? Data()
+        }
         var result = ExifParser.parse(jpegHead: head)
         // The parser only learns how far EXIF extends one segment at a time, so keep reading until it has
         // enough, the file ends, or the cap is reached.
-        while case .needMoreBytes(let needed) = result, needed <= maxRead,
+        while case .needMoreBytes(let needed) = result, needed <= min(maxRead, jpegLimit),
             let more = try handle.read(upToCount: needed - head.count), !more.isEmpty
         {
             head += more

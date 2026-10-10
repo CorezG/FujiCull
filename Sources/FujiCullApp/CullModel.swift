@@ -443,19 +443,19 @@ final class CullModel {
     private func requestDisplay(index: Int, priority: ReadPriority) {
         let frame = frames[index]
         let key = key(.display, frame.id)
-        // RAF-only frames get their embedded preview in T14.
-        guard displayCache.value(for: frame.id) == nil, !inFlight.contains(key), let jpg = frame.jpg,
+        // A RAF-only frame shows the full-size JPEG embedded in the RAF (R4).
+        guard displayCache.value(for: frame.id) == nil, !inFlight.contains(key), let file = frame.jpg ?? frame.raf,
             let base = identityBase
         else { return }
         inFlight.insert(key)
-        let url = base.appendingPathComponent(jpg.relativePath)
+        let url = base.appendingPathComponent(file.relativePath)
         let maxPixelSize = Self.displayPixelSize()
         let generation = generation
         let reader = reader
         Task {
             do {
                 // The card reader only reads; decoding runs alongside, so the next file's read isn't held up.
-                let data = try await reader.submit(key: key, priority: priority) { try Data(contentsOf: url) }
+                let data = try await reader.submit(key: key, priority: priority) { try PreviewPipeline.readJPEG(url) }
                 let image = try await Task.detached(priority: .userInitiated) {
                     try PreviewPipeline.decodeDisplay(data, maxPixelSize: maxPixelSize)
                 }.value
@@ -531,10 +531,11 @@ final class CullModel {
         guard frames.indices.contains(index) else { return }
         let frame = frames[index]
         let key = key(.thumbnail, frame.id)
-        guard headers[frame.id] == nil, !inFlight.contains(key), let jpg = frame.jpg, let base = identityBase
+        guard headers[frame.id] == nil, !inFlight.contains(key), let file = frame.jpg ?? frame.raf,
+            let base = identityBase
         else { return }
         inFlight.insert(key)
-        let url = base.appendingPathComponent(jpg.relativePath)
+        let url = base.appendingPathComponent(file.relativePath)
         let generation = generation
         do {
             let header = try await reader.submit(key: key, priority: priority) { try ThumbnailLoader.loadHeader(url) }
