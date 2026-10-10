@@ -12,7 +12,7 @@ R3 says frames are "ordered by capture time (EXIF), then filename." To get EXIF 
 The X-T50 numbers files sequentially (`DSCF0001`–`DSCF9999`). When the counter wraps, it starts a new folder (`100_FUJI` → `101_FUJI`). There is one camera and one card per trip.
 
 ## Decision
-Order by DCIM folder name, then by filename, with a numeric-aware comparison. EXIF capture time is still read in the background, and is used for the archive folder date (A4) and the EXIF line.
+Order by DCIM folder name, then by filename, with a numeric-aware comparison. EXIF capture time is still read in the background, and is used for the EXIF line. (It was also used for the archive folder date, A4, until Q10 dropped dates from folder names.)
 
 ## Alternatives Considered
 

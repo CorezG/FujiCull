@@ -92,13 +92,16 @@ Apply runs as an ordered, safe sequence:
    - Check SSD free space ≥ size of keepers; abort with a clear message otherwise.
    - Show summary: N keep (♥ M), N reject, N undecided.
    - If any frames are Undecided: warn — they will be **left on the card untouched**.
-2. **Copy keepers** (RAF + JPG) to
-   `<SSD>/FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`
-   and copy keeper JPGs to `.../YYYY-MM-DD <Trip name>/Google Photos/`.
-   - Date = capture date of the earliest frame on the card.
+2. **Copy keepers** (RAF + JPG) to `<SSD>/<Trip name>/`, a flat folder at the root of the
+   SSD that matches the existing archive (`Japan 2024/`, `Vancouver '26/`), and copy keeper
+   JPGs to `<SSD>/<Trip name>/Google Photos/`. _Amended 2026-10-09; was
+   `FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`._
+   - If `<Trip name>/` already exists and FujiCull didn't create it for this card, ask before adding to it.
+   - Existing folders on the SSD are never renamed, moved or reorganised. The flat layout applies only to trips FujiCull archives from now on.
+   - The trip name must be a valid folder name on the SSD (exFAT forbids `" * / : < > ? \ |`); show an inline error otherwise.
    - Never overwrite: if a filename already exists (e.g. DSCF counter wrapped), append a suffix (`DSCF1234-2.JPG`) and keep the pair names matched.
 3. **Verify** every copied file by reading it back and comparing checksums.
-4. **Tag favourites:** apply a Finder tag **"Favourite"** to the archived RAF, JPG and Google Photos JPG of every ♥ frame.
+4. **Tag favourites:** apply a Finder tag **"Favourite"** to the archived RAF and JPG of every ♥ frame. The Google Photos copy is not tagged, so a Finder tag search lists each favourite once. _Amended 2026-10-09 (Q11)._
 5. **Confirm deletion:** "Delete 1,412 rejected frames (2,824 files, 141 GB) from the card? This cannot be undone." Default button is Cancel.
 6. **Delete rejects** from the card permanently (not to the Trash — the macOS Trash on an SD card just hides files on the card and doesn't free space).
 7. **Summary screen:** copied / verified / deleted / left on card, with "Reveal in Finder" for the archive and the Google Photos folder.
@@ -139,7 +142,7 @@ Apply runs as an ordered, safe sequence:
 - A1. macOS 14 (Sonoma) or later is acceptable as the minimum.
 - A2. Personal, non-sandboxed build run locally (simplifies card/SSD access and deletion).
 - A3. Duplicating keeper JPGs into `Google Photos/` on the SSD (~10 GB per trip) is acceptable in exchange for a one-step upload folder.
-- A4. Folder date uses the earliest capture date on the card, not the date Apply is run.
+- A4. ~~Folder date uses the earliest capture date on the card.~~ Superseded 2026-10-09: folders are named by trip only, with no date.
 
 ## 8. Tip (not a requirement)
 

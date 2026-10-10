@@ -149,7 +149,7 @@ There are three tiers. Every read goes through one `CardReader` actor that serve
 - **RAF-only orphans** (R4): parse the RAF header (the magic is `FUJIFILMCCD-RAW`; a big-endian `UInt32` JPEG offset and length are at bytes 84 and 88). Read only the embedded JPEG and run it through the same T0 and T1 path. T2 isn't available for these; zoom shows the embedded preview at its maximum size.
 - **Holding → (key repeat):** the viewer shows T0 instantly and requests T1 only once the key has been released, or after the cursor has rested for 120 ms. The card queue therefore never falls behind a run of 30 frames per second (NFR "never blocks").
 - **Zoom across frames** (R12): when zoom is on, the prefetcher asks for T2 of +1 as well. Only one extra T2 is held, to stay within budget.
-- **Background metadata pass:** after open, T0 is read for every frame in order. This fills the filmstrip, the EXIF and the capture dates. That's about 128 MB of small reads, probably 10–30 s, and it never blocks the UI. Apply's pre-flight waits for it, because the folder date needs the earliest capture.
+- **Background metadata pass:** after open, T0 is read for every frame in order. This fills the filmstrip, the EXIF and the capture dates. That's about 128 MB of small reads, probably 10–30 s, and it never blocks the UI. Apply doesn't need it, since folder names no longer include a date (Q10).
 - **Memory budget:**
 
 | Cache | Size |
@@ -183,10 +183,10 @@ There are three tiers. Every read goes through one `CardReader` actor that serve
 
 **Planner** (pure function). It takes the session, scan snapshot, metadata, ledger, archive root, trip name, and a listing of the destination folders. It returns an `ApplyPlan`:
 
-- **Destination:** `<root>/FujiCull Archive/<YYYY>/<YYYY-MM-DD> <Trip>/`, plus `Google Photos/` inside it. The date is the earliest capture date on the card (A4). After the first run, the destination is fixed in the ledger (D7).
+- **Destination:** `<SSD root>/<Trip name>/`, plus `Google Photos/` inside it, matching your existing flat archive (Q10). After the first run, the destination is fixed in the ledger (D7). If the folder already exists and isn't in this card's ledger, for example your own `Japan 2024/`, pre-flight asks before adding to it; the never-overwrite collision rule still applies inside it. The trip name is checked against exFAT's forbidden characters (`" * / : < > ? \ |`, and no trailing space or dot).
 - **Copy operations** are for every Keep frame that doesn't have a verified ledger entry. Each copies the RAF and JPG to the archive folder, and the JPG to `Google Photos/`. The Google Photos copy is made from the *verified archive copy*, not the card, so the card is read only once.
 - **Collision naming:** if `DSCF1234.JPG` or `DSCF1234.RAF` already exists in either destination folder, the planner picks the smallest `n ≥ 2` for which `DSCF1234-n.JPG`, `DSCF1234-n.RAF` and `Google Photos/DSCF1234-n.JPG` are all free. The pair always keeps matching names. The chosen names go into the ledger before copying, so a resumed run reuses them.
-- **Tag operations:** add the Finder tag "Favourite" to every archived file of a ♥ frame. Remove it from files whose frame is no longer a favourite (R25).
+- **Tag operations:** add the Finder tag "Favourite" to the archive RAF and JPG of a ♥ frame. The `Google Photos/` copy is never tagged (Q11). Remove the tag from files whose frame is no longer a favourite (R25).
 - **Delete operations:** every Reject frame that is still present on the card.
 - **Archive-removal operations** (D6): for every Reject frame that has `verified` ledger entries, remove its archive RAF, archive JPG and Google Photos JPG.
 - **Pre-flight facts:**
@@ -345,6 +345,8 @@ Coverage goal: every Apply branch in Core is exercised by at least one test. The
 | Q4 | Sample X-T50 files | **Provided** in `Sample Images/` (gitignored). S1 and S2 are done. |
 | Q5 | Undo scope | **OK** (D3). |
 | Q6 | SSD format | **exFAT** ("C&J Archive", 2 TB, shared with Windows). See the [hardware probe](spikes/2026-10-09-hardware-probe.md). Follow-ups are Q10 and Q11. |
+| Q11 | Which copies get the Favourite tag | **Archive RAF and JPG only**, not the Google Photos copy, so a Finder search shows each favourite once. Requirements §4.6 step 4 amended. |
+| Q10 | Archive folder layout | **Flat `<Trip name>/` at the SSD root**, matching the existing archive. Requirements §4.6 step 2 amended; A4 (folder date) superseded. |
 | Q7 | Command Line Tools only | **Yes.** |
 | Q8 | Undecided filter (D4) | **OK.** |
 | Q9 | 100% = 1 image px per device px (D5) | **OK.** |

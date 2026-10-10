@@ -1,3 +1,14 @@
+# FujiCull
+
+Native macOS (Swift 6, SwiftPM, Command Line Tools only) app for culling Fujifilm RAW+JPEG shoots from the SD card.
+
+Read CONSTRAINTS.md before writing code. Do not weaken it to make a change pass.
+
+- What to build: docs/REQUIREMENTS.md. How: docs/DESIGN.md and docs/decisions/ (ADRs). Hardware facts: docs/spikes/.
+- Work items: tasks/todo.md, in order; tasks/plan.md for the overview.
+- Before calling a task done: `make check` (until T1 creates it, run scripts/floor-guard.py and scripts/check-boundaries.sh).
+- Never point code or tests at real volumes (Fuji SD, C&J Archive). Use temp directories. `Sample Images/` is gitignored and never committed.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

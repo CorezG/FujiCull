@@ -13,7 +13,8 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - [ ] `make test` runs at least one Swift Testing test per test target, and it passes.
 - [ ] `make app` produces an ad-hoc-signed `build/FujiCull.app` that launches and shows a dark window.
 - [ ] `make lint` passes.
-**Verify:** `make test && make lint && make run`
+- [ ] `make check` runs every task-end check in CONSTRAINTS.md (format, `-warnings-as-errors` build, floor guard, boundaries, tests with `--enable-code-coverage`, coverage check) and prints its duration. `make check-full` adds the slow tests. A `.swift-format` config is committed.
+**Verify:** `make check && make run`
 **Depends on:** —
 **Files:** `Package.swift`, `Makefile`, `Resources/Info.plist`, `Sources/FujiCullApp/FujiCullApp.swift`, plus a placeholder source file and a test in each target
 **Scope:** M
@@ -47,6 +48,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Acceptance:**
 - [ ] The parser handles a missing thumbnail, an APP1 that isn't in the first 64 KB (it returns a "need more bytes" result), and truncated or corrupt input without crashing.
 - [ ] `ExifSummary` round-trips the values written into the synthetic fixtures.
+- [ ] The EXIF Orientation tag is read, and T0 thumbnails are rotated to match. The X-T50 stores the IFD1 thumbnail unrotated (160 × 120) even for portrait frames, so without this the filmstrip and grid show portraits on their side. This is tested with a portrait frame (Orientation 6 and 8 both occur on the card).
 **Verify:** `make test`
 **Depends on:** T1
 **Files:** `Sources/FujiCullCore/Metadata/JPEGSegments.swift`, `Sources/FujiCullImaging/{ThumbnailLoader,ExifReader}.swift`, `Tests/FujiCullCoreTests/JPEGSegmentsTests.swift`, `Tests/FujiCullImagingTests/ThumbnailLoaderTests.swift`
@@ -220,7 +222,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T18: ApplyPlanner (R22, R24–R26, D6, D7)
 **Description:** A pure `plan(ApplyInput) throws(ApplyError) -> ApplyPlan` implementing §5.7:
-- the destination path from the earliest capture date
+- the destination `<SSD root>/<Trip name>/` (+ `Google Photos/`), including the "folder exists but isn't ours" case and exFAT-invalid trip names
 - collision suffixes chosen per pair
 - copy operations, with Google Photos copies sourced from the archive
 - tag add and remove
@@ -239,7 +241,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Description:** Execute a plan's copy operations one after another with `safeCopy`. The Google Photos copy is made from the verified archive file. Each verified file is recorded in the ledger. Finder tags are applied through `NSURL` resource values, merged with existing tags. The executor reports progress (bytes and ETA). It is cancellable. On resume, a final-named file without a ledger entry is adopted only if its hash matches.
 **Acceptance:**
 - [ ] Fault injection at every step gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming.
-- [ ] Tags are verified on the archive files after the run.
+- [ ] Tags are verified on the archive RAF and JPG after the run, and the `Google Photos/` copy has no Favourite tag (Q11).
 **Verify:** `make test`
 **Depends on:** T16, T18
 **Files:** `Sources/FujiCullCore/Apply/{ApplyExecutor,FinderTags}.swift`, `Tests/FujiCullCoreTests/ApplyExecutorCopyTests.swift`
@@ -274,7 +276,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Description:** Apply opens a sheet with:
 - the trip name (prefilled and locked after the first run, D7)
 - the archive root (chosen once and remembered as a security-scoped bookmark or a path)
-- a wait for the metadata pass to finish
+- a prompt before adding to an existing folder of the same name that FujiCull didn't create, and an inline error for trip names exFAT can't store
 - the space check, with a clear abort message
 - the summary (keep, ♥, reject, undecided, and archive removals)
 - a warning about Undecided frames
