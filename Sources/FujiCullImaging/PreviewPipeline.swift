@@ -44,12 +44,14 @@ public enum PreviewPipeline {
         let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
         let factor = [8, 4, 2].first { longEdge / $0 >= maxPixelSize } ?? 1
 
-        if factor == 1, longEdge > maxPixelSize {
-            // No whole reduction fits: decode and scale in one step.
+        if factor == 1 {
+            // No whole reduction fits: decode, turn upright and (only if it is too big) scale, in one step.
+            // Asking for the plain image instead returns one that isn't decoded yet, and its first draw then
+            // decodes on the main thread (57–131 ms for an upright 20 MP frame; docs/spikes/perf.md).
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceThumbnailMaxPixelSize: min(maxPixelSize, longEdge),
                 kCGImageSourceShouldCacheImmediately: true,
             ]
             guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {

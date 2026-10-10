@@ -539,10 +539,14 @@ final class CullModel {
         let reader = reader
         Task {
             do {
+                let requested = ContinuousClock.now
                 let data = try await reader.submit(key: key, priority: priority) { try Data(contentsOf: url) }
+                let readMs = Int(Self.milliseconds(since: requested))
+                let decodeStarted = ContinuousClock.now
                 let image = try await Task.detached(priority: .userInitiated) {
                     try PreviewPipeline.decodeFull(data)
                 }.value
+                let decodeMs = Int(Self.milliseconds(since: decodeStarted))
                 guard generation == self.generation else { return }
                 inFlight.remove(key)
                 guard isZoomed else { return }
@@ -552,7 +556,7 @@ final class CullModel {
                     if let started = zoomStarted {
                         zoomStarted = nil
                         Self.timingLog.notice(
-                            "zoom \(frame.id.rawValue, privacy: .public): full resolution in \(Int(Self.milliseconds(since: started)), privacy: .public) ms"
+                            "zoom \(frame.id.rawValue, privacy: .public): full resolution in \(Int(Self.milliseconds(since: started)), privacy: .public) ms (read \(readMs, privacy: .public) ms, decode \(decodeMs, privacy: .public) ms, \(image.width, privacy: .public)x\(image.height, privacy: .public))"
                         )
                     }
                 }

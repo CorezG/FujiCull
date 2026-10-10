@@ -280,6 +280,23 @@ private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async 
         #expect(image.width == 800 && image.height == 1200)
     }
 
+    @Test(arguments: [1, 6])
+    func theFullDecodeIsFinishedBeforeItReturns(orientation: Int) throws {
+        // ImageIO can hand back an image it hasn't decoded yet; the first draw then pays for the decode on
+        // the main thread (57–131 ms for an upright 20 MP frame, checkpoint C). A finished decode no longer
+        // needs the JPEG's bytes, so wiping them must not change what the image draws.
+        let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: orientation)
+        let bytes = UnsafeMutableRawPointer.allocate(byteCount: jpeg.count, alignment: 1)
+        defer { bytes.deallocate() }
+        jpeg.copyBytes(to: bytes.assumingMemoryBound(to: UInt8.self), count: jpeg.count)
+
+        let image = try PreviewPipeline.decodeFull(Data(bytesNoCopy: bytes, count: jpeg.count, deallocator: .none))
+        bytes.initializeMemory(as: UInt8.self, repeating: 0, count: jpeg.count)
+
+        let pixel = try centrePixel(image)
+        #expect(abs(pixel.red - 51) <= 6 && abs(pixel.green - 128) <= 6 && abs(pixel.blue - 204) <= 6)
+    }
+
     @Test func rejectsDataThatIsNotAnImage() {
         #expect(throws: PreviewPipeline.DecodeError.self) {
             try PreviewPipeline.decodeDisplay(Data("not a jpeg".utf8), maxPixelSize: 300)
@@ -321,4 +338,16 @@ private func syntheticJPEG(width: Int, height: Int, orientation: Int) throws -> 
     CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: orientation] as CFDictionary)
     #expect(CGImageDestinationFinalize(destination))
     return data as Data
+}
+
+/// The colour in the middle of `image`, 0–255 per channel.
+private func centrePixel(_ image: CGImage) throws -> (red: Int, green: Int, blue: Int) {
+    var pixel = [UInt8](repeating: 0, count: 4)
+    let context = try #require(
+        CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+    context.draw(
+        image, in: CGRect(x: -image.width / 2, y: -image.height / 2, width: image.width, height: image.height))
+    return (Int(pixel[0]), Int(pixel[1]), Int(pixel[2]))
 }
