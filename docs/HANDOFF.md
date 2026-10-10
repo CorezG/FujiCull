@@ -1,16 +1,22 @@
 # FujiCull — Session Handoff
 
-## Where we stopped (2026-10-10)
+## Where we stopped (2026-10-10, evening)
 
 **Read this section first.** The original requirements-session handoff is kept below for history.
 
-- **Phases 0–3 are done.** Checkpoints A (browse), B (culling, filmstrip, resume) and C (viewing speed) were passed on the real card. Checkpoint C's numbers and the two bugs it found are in [`docs/spikes/perf.md`](spikes/perf.md): open 0.55 s, next photo median 19 ms, zoom 99–244 ms, holding → steady at the key-repeat rate. T15's "500 frames" was closed on 379 held frames (longest hold 141), as noted there.
-- **Added 2026-10-10:** a click on the photo while zoomed returns to the whole photo (REQUIREMENTS keymap).
-- **Next step: phase 4 (Apply engine), on the owner's go-ahead.** Run doubt-review round 3 on DESIGN §5.7 first (fresh Claude subagent; the owner has no other models), then T16–T20 test-first.
+- **Phases 0–3 are done, and phase 4 (the Apply core) is built: T15a and T16–T20.** Nothing is wired to the app yet, so FujiCull still cannot copy or delete anything.
+  - The design had a third doubt review ([review](reviews/2026-10-09-apply-doubt-review.md)), and the exFAT behaviour it relies on was measured on a throwaway disk image ([spike](spikes/2026-10-10-exfat-fskit.md)). DESIGN §5.7 is the current design (rules SR1–SR28).
+  - Code is in `Sources/FujiCullCore/Apply/`: `FileSystem` + `LocalFileSystem`, `SafeCopy`, `Ledger` + `LedgerJournal`, `ApplyPlanner` + `ApplyPlan`, `ApplyExecutor` (+ `ApplyExecutor+Remove`), `ApplySummary`.
+  - 385 tests. Tests use `FaultyFileSystem` (fails or "unplugs" at any call) and `ApplyWorld` (a card, an archive and a journal in temp folders).
+- **Next step: checkpoint D.** The owner reviews [what Apply is tested against](reviews/2026-10-10-apply-fault-tests.md) before any UI connects to it. Then phase 5: T21–T24 (pre-flight, progress and summary screens; volume monitor; rehearsal).
+- **Hardware for the rehearsal:** an 8 GB throwaway card, formatted in the X-T50, with 27 RAW+JPEG pairs. It reads at 22 MB/s and has **no volume UUID** (FAT32 formatted in camera), so it is keyed `card-<capacity>-<format time>`. The owner is also backing up the real card ("Fuji SD") to C&J Archive by hand. **Apply must not run on Fuji SD until the owner says its photos are safe.**
+- **Not done inside the executor yet, for phase 5 to wire up:** building `ApplyExecutor.Context` from the live session (the app must wait for the metadata pass so every capture time is known), looking up `archiveRoots` by volume UUID, the archive lock (SR3), freezing culling during Apply (SR6), dropping undo entries for deleted frames (SR21), `VolumeMonitor` cancellation and the sleep assertion (R23), and the Eject buttons (SR20). For a card with no volume UUID the executor relies on the per-file size-and-date checks; the app should compare the session key again before starting.
 - **Reading the timing log:** `/usr/bin/log show --last 30m --style compact --predicate 'subsystem == "com.github.corezg.FujiCull" AND category == "timing"'`. Use the full path: in zsh, `log` is a shell builtin. Lines are `open`, `move`, `zoom` (with read/decode split) and `hold`.
 - **Open items:**
   - **One intermittent test-run crash** (signal 5) during T13. It didn't reproduce in 33 reruns. Watch for it.
-  - **T3, one check left:** the volume UUID after an in-camera format. It erases the card, so it waits until the photos are archived (or a spare card). The lock switch was tested 2026-10-10: this reader passes it through and `volumeIsReadOnly` is true.
+  - **T3, one check left:** whether an in-camera format changes the UUID of the 256 GB exFAT card. Nothing depends on it now (capture time is part of frame identity). Known: the X-T50's FAT32 format of a small card writes no volume UUID at all.
+  - **Another session of the owner's** added an app icon (`Resources/AppIcon.*`, `scripts/make-icon.swift`, edits to `Makefile` and `Info.plist`) and a `graphify-out/` folder. They are uncommitted and were left alone.
+  - **The scanner speed test** (`scansTwoThousandPairsInUnder200Milliseconds`) fails at 200–203 ms when the Mac is busy (seen during the owner's 200 GB Finder copy). It passes on a quiet machine; it was not changed.
   - Locally installed skills (`.claude/skills/`, `.agents/`, `skills-lock.json`) are gitignored by the owner's choice; the coverage baseline was raised to 95.9% with approval (2026-10-10).
 - **Working agreements:**
   - Rebuild and relaunch the app (`make app && open build/FujiCull.app`) after every change, so Finder and the Dock get the latest build.
@@ -18,6 +24,8 @@
   - The owner prefers native data only; recipe-name inference was declined.
   - Spec changes go into REQUIREMENTS with an "amended" note: R12 (zoom resets on move), R26/R27, Esc, scroll zoom, double-click.
   - A fix isn't verified until the behaviour around it is checked too: the first strip scroll-bar fix removed the warning and stopped the strip scrolling (2026-10-10).
+  - Fuji cameras only for now (owner, 2026-10-10). The raw file's role is named `raw` in the Apply code so other formats can be added later.
+  - After writing safety code, break its rules one at a time and confirm a test fails (17 such checks so far, listed in the checkpoint D note).
 
 ---
 
