@@ -233,15 +233,16 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 **Files:** `Sources/FujiCullCore/Apply/{FileSystem,LocalFileSystem,SafeCopy}.swift`, `Tests/FujiCullCoreTests/{FaultyFileSystem,SafeCopyTests}.swift`
 **Scope:** M
 
-### - [ ] T17: Ledger model, stored in the session
-**Description:** `Ledger` holds the destination folder (fixed after the first run, D7), the per-frame name mapping, and entries for verified, tagged, archive-removed and deleted files (with size, mtime and sha256). It is stored in `SessionFile`. Ledger updates are written synchronously with `fsync`.
+### - [x] T17: Ledger model and its journal on disk
+**Description:** `LedgerRecord` is one line of the card's journal; `Ledger` folds the records into each archive file's state, its tag, and each card file's state; `LedgerJournal` is the append-only `Ledger/<key>.jsonl`, forced to disk after every record. _(Rewritten 2026-10-10: the design moved the ledger out of `SessionFile` into its own journal in review cycle 1.)_
 **Safety rules:** SR5, SR15 (separate per-card JSONL journal, one record per file per operation, three record families with the latest record in each authoritative, torn tail truncated, mid-file corruption stops and offers Start fresh or Cancel, `released` and `superseded` records), SR25 (`trashing` / `deleting` intent records), every `reserve` and `verified` names its destination.
 **Acceptance:**
-- [ ] Round-trip tests pass.
-- [ ] Ledger writes survive a simulated crash: the write is atomic, so after a kill the file holds either the old or the new ledger.
+- [x] Round-trip tests pass.
+- [x] Ledger writes survive a simulated crash: the write is atomic, so after a kill the file holds either the old or the new ledger. _Tested by cutting the file at every byte of an appended record: each time the next open returns exactly the old records and removes the torn tail._
+- [x] Out-of-order records grant nothing: a `verified` without its `reserve`, a `trashed` without its `trashing`, or a tag on an unknown file is ignored. _Confirmed by breaking three of these rules in turn and watching tests fail._
 **Verify:** `make test`
 **Depends on:** T9
-**Files:** `Sources/FujiCullCore/Apply/Ledger.swift`, `SessionFile.swift`, `SessionStore.swift`, `Tests/FujiCullCoreTests/LedgerTests.swift`
+**Files:** `Sources/FujiCullCore/Apply/{Ledger,LedgerJournal}.swift`, `Tests/FujiCullCoreTests/LedgerTests.swift`
 **Scope:** S
 
 ### - [ ] T18: ApplyPlanner (R22, R24–R26, D6, D7)
