@@ -51,3 +51,13 @@ So the camera writes no volume serial on FAT32, and every small card it formats 
   check of every keeper at the end of each run.
 - Behaviour of a rename interrupted by power loss on exFAT. Recovery never trusts a file at a reserved name
   without hashing all of it.
+
+## SafeCopy on real exFAT
+
+After T16, the finished copy primitive was run against a 400 MB exFAT disk image with the five sample pairs
+(scratch harness, not part of the test suite):
+
+- Nine files copied; each hashed the same as its source when read back independently, and kept its date.
+- The image then filled up. The copy failed with "no space left" and removed its partial: nothing was left.
+- A second run refused every name that already existed and left no partial behind.
+- No `fujicull-partial` name, or `._` companion of one, remained in the folder.

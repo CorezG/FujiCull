@@ -179,6 +179,7 @@ private func sha256(_ data: Data) -> String {
         #expect(failure == SafeCopy.Failure(reason: .nameTaken("DSCF0001.JPG"), leftBehind: []))
         #expect(try Data(contentsOf: archive.url("DSCF0001.JPG")) == theirs)
         #expect(try archiveListing() == ["DSCF0001.JPG"])
+        #expect(fs.calls(.write) == 0, "noticed before 100 MB is written, not after")
     }
 
     @Test func aNameTheVolumeTreatsAsTheSameIsTaken() throws {

@@ -83,6 +83,8 @@ public enum SafeCopy {
         let partial = partialName(for: request.finalName)
         let folder = request.destination
 
+        // An early look, so a taken name costs nothing. The claim further down is what actually decides.
+        if try io(try fs.entry(request.finalName, in: folder)) != nil { throw .nameTaken(request.finalName) }
         let written = try writePartial(request, partial, fs, isCancelled, &created)
         guard written.size == request.expectedSize else {
             throw .sourceChanged(expectedSize: request.expectedSize, actualSize: written.size)

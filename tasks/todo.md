@@ -216,7 +216,7 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 **Files:** `SourceLocator.swift`, `SessionKey.swift`, `SessionFile.swift`, `CullModel.swift`, their tests
 **Scope:** S
 
-### - [ ] T16: FileSystem protocol and the safe copy primitive
+### - [x] T16: FileSystem protocol and the safe copy primitive
 **Description:** A `FileSystem` protocol with `LocalFileSystem` and a `FaultyFileSystem` test double. `safeCopy(src, dstDir, name)`:
 - copy in 8 MB chunks while hashing with SHA-256
 - write to `.<name>.fujicull-partial`, then `F_FULLFSYNC`
@@ -226,8 +226,8 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 - support cancellation between chunks
 **Safety rules:** SR7 (all I/O relative to one directory descriptor whose volume UUID is read with `fgetattrlist`), SR10 (`O_EXCL` placeholder claims the final name; rename only over our own placeholder; "exists" is a typed name-conflict error), write-side `F_NOCACHE` with the read-back as the file's first read, an `F_FULLFSYNC` error fails the copy, directory `F_FULLFSYNC` before `verified`.
 **Acceptance:**
-- [ ] Each injected fault (a write error at chunk N, a corrupted read-back, cancellation, the destination already existing) leaves no final file and no leftover `.partial` file, and returns a typed error.
-- [ ] A successful copy has a matching hash and mtime.
+- [x] Each injected fault (a write error at chunk N, a corrupted read-back, cancellation, the destination already existing) leaves no final file and no leftover `.partial` file, and returns a typed error. _Also: a refused sync, a changed source, a name taken at the last moment, and failures in the last three steps. When the drive itself disappears, the leftovers are reported for recovery (T19)._
+- [x] A successful copy has a matching hash and mtime. _Also run end-to-end on a throwaway exFAT disk image with the sample photos: hashes and dates matched, existing names were refused, and a real disk-full error left nothing behind._
 **Verify:** `make test`
 **Depends on:** T1
 **Files:** `Sources/FujiCullCore/Apply/{FileSystem,LocalFileSystem,SafeCopy}.swift`, `Tests/FujiCullCoreTests/{FaultyFileSystem,SafeCopyTests}.swift`
