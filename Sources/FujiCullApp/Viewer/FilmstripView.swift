@@ -71,13 +71,14 @@ struct FilmstripView: NSViewRepresentable {
     }
 }
 
-/// The strip's scroll view, which never shows a horizontal scroll bar. NSCollectionView switches the bar back
-/// on for a horizontal layout; with a mouse attached it is the always-visible kind and takes 17 pt of the
-/// strip, which leaves too little room for the cells and makes AppKit warn on every layout pass (found at
-/// checkpoint C; reproduced in docs/spikes/perf.md).
+/// The strip's scroll view, whose scroll bar never takes room from the content. NSCollectionView switches the
+/// horizontal bar on for a horizontal layout; with a mouse attached it is the always-visible kind and takes
+/// 17 pt of the strip, which leaves too little room for the cells and makes AppKit warn on every layout pass
+/// (found at checkpoint C; docs/spikes/perf.md). Refusing the bar outright stops the strip scrolling to the
+/// current frame, so the bar stays but is always the overlay kind.
 private final class StripScrollView: NSScrollView {
-    override var hasHorizontalScroller: Bool {
-        get { false }
+    override var scrollerStyle: NSScroller.Style {
+        get { .overlay }
         set {}
     }
 }
