@@ -27,14 +27,12 @@ struct FilmstripView: NSViewRepresentable {
     func makeCoordinator() -> FilmstripCoordinator { FilmstripCoordinator(model: model) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let layout = style == .strip ? StripLayout() : NSCollectionViewFlowLayout()
+        let layout = NSCollectionViewFlowLayout()
         switch style {
         case .strip:
             layout.scrollDirection = .horizontal
             layout.itemSize = NSSize(width: FilmstripCell.width, height: FilmstripCell.height)
             layout.minimumLineSpacing = 6
-            // With StripLayout the strip's content is as tall as the strip, so a 64 pt cell with these insets
-            // always has the strictly-greater room AppKit requires (no layout warning on each pass).
             layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 8, right: 12)
         case .grid:
             layout.scrollDirection = .vertical
@@ -56,7 +54,7 @@ struct FilmstripView: NSViewRepresentable {
         context.coordinator.scrollPosition = style == .strip ? .centeredHorizontally : .nearestHorizontalEdge
         context.coordinator.opensOnDoubleClick = style == .grid
 
-        let scroll = NSScrollView()
+        let scroll = style == .strip ? StripScrollView() : NSScrollView()
         scroll.documentView = collection
         scroll.hasHorizontalScroller = false
         scroll.hasVerticalScroller = style == .grid
@@ -73,16 +71,14 @@ struct FilmstripView: NSViewRepresentable {
     }
 }
 
-/// A horizontal flow layout whose content fills the strip's height. A plain flow layout sizes the collection
-/// view to exactly cell + insets, and AppKit then warns that the cell isn't strictly shorter than the space
-/// left, on every layout pass (seen ~1 per keypress in the T15 timing logs).
-private final class StripLayout: NSCollectionViewFlowLayout {
-    override var collectionViewContentSize: NSSize {
-        var size = super.collectionViewContentSize
-        if let visibleHeight = collectionView?.enclosingScrollView?.contentView.bounds.height {
-            size.height = max(size.height, visibleHeight)
-        }
-        return size
+/// The strip's scroll view, which never shows a horizontal scroll bar. NSCollectionView switches the bar back
+/// on for a horizontal layout; with a mouse attached it is the always-visible kind and takes 17 pt of the
+/// strip, which leaves too little room for the cells and makes AppKit warn on every layout pass (found at
+/// checkpoint C; reproduced in docs/spikes/perf.md).
+private final class StripScrollView: NSScrollView {
+    override var hasHorizontalScroller: Bool {
+        get { false }
+        set {}
     }
 }
 
