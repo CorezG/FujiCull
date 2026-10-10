@@ -127,6 +127,16 @@ struct BrowseView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 12)
             }
             DecisionFlash(flash: model.flash)
+            if model.clearedDecisions > 0 {
+                let n = model.clearedDecisions
+                Text(
+                    "\(n) saved decision\(n == 1 ? "" : "s") didn't match the photos now on this card and \(n == 1 ? "was" : "were") cleared"
+                )
+                .font(.system(size: 12)).foregroundStyle(.yellow)
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .background(.black.opacity(0.7), in: Capsule())
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(12)
+            }
             if model.showsTimings {
                 Text(model.timingText.isEmpty ? "Timings: move to another photo" : model.timingText)
                     .font(.system(size: 11, design: .monospaced))

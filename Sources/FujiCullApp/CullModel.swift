@@ -57,6 +57,12 @@ final class CullModel {
     @ObservationIgnored private var sessionKey: String?
     @ObservationIgnored private var saveRevision = 0
     @ObservationIgnored private var pendingResume: CullSession?
+    /// The saved session this source was restored from, and its decisions not yet confirmed by capture
+    /// time (SR2). Path and sizes can repeat after a card is formatted; the moment a photo was taken can't.
+    @ObservationIgnored private var restoredFile: SessionFile?
+    @ObservationIgnored private var unconfirmed: [FrameID: StoredFrame] = [:]
+    /// How many restored decisions were cleared because the photos turned out to be different ones.
+    private(set) var clearedDecisions = 0
     /// Eight display images (~20 MB each at 2736 px). The prefetch window is five, so the frame preloaded
     /// for the next step is never pushed out early (owner saw intermittent lag with a 100 MB budget).
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 160_000_000)
@@ -125,13 +131,14 @@ final class CullModel {
 
     func open(_ folder: URL) async {
         await closeSource()
-        let name = Self.displayName(of: folder)
-        phase = .scanning(name: name)
+        // A camera card is always opened whole, whichever folder on it was chosen (SR1).
         let base = SourceLocator.identityBase(for: folder)
+        let name = Self.displayName(of: base)
+        phase = .scanning(name: name)
         let started = ContinuousClock.now
         do {
             let result = try await Task.detached(priority: .userInitiated) {
-                try SourceScanner.scan(folder, identityBase: base)
+                try SourceScanner.scan(base, identityBase: base)
             }.value
             openScanMs = Self.milliseconds(since: started)
             openStarted = started
@@ -142,6 +149,7 @@ final class CullModel {
             sourceVolume = try? folder.resourceValues(forKeys: [.volumeURLKey]).volume
             sessionKey = key
             frames = result.frames
+            restoredFile = saved
             switch SessionRestore.match(saved, to: result.frames) {
             case .none:
                 session = CullSession(frameIDs: result.frames.map(\.id))
@@ -175,6 +183,7 @@ final class CullModel {
     func startFresh() async {
         guard case .resumePrompt = phase else { return }
         pendingResume = nil
+        restoredFile = nil
         do {
             try await store.startFresh()
         } catch {
@@ -186,6 +195,11 @@ final class CullModel {
     }
 
     private func beginBrowsing() {
+        // Every restored decision waits for its frame's capture time before it counts as confirmed.
+        let restored = session.storedMarks
+        unconfirmed = Dictionary(
+            (restoredFile?.frames ?? []).filter { restored[$0.id] != nil }.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first })
         phase = .browsing
         showCurrent()
         startMetadataPass()
@@ -207,6 +221,9 @@ final class CullModel {
         }
         sessionKey = nil
         pendingResume = nil
+        restoredFile = nil
+        unconfirmed = [:]
+        clearedDecisions = 0
         settleTask?.cancel()
         settleTask = nil
         isRifling = false
@@ -250,16 +267,44 @@ final class CullModel {
     private func saveSoon() {
         guard let key = sessionKey else { return }
         saveRevision += 1
-        let file = SessionFile(key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames)
+        let file = SessionFile(
+            key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames,
+            captureTimes: knownCaptureTimes)
         let revision = saveRevision
         let store = store
         Task { await store.scheduleSave(file, revision: revision) }
     }
 
+    /// Capture times of the decided frames, as far as they're known: read from the photo, or carried over
+    /// from the saved session until the photo has been read.
+    private var knownCaptureTimes: [FrameID: CaptureTime] {
+        var times = unconfirmed.compactMapValues(\.captureTime)
+        for id in session.storedMarks.keys {
+            if let time = headers[id]?.exif.captureTime { times[id] = time }
+        }
+        return times
+    }
+
+    /// A frame's capture time has just been read: keep its restored decision only if it was made for this
+    /// very photo (SR2), and make sure the time is saved with any decision on it.
+    private func captureTimeRead(for id: FrameID, _ captureTime: CaptureTime?) {
+        var cleared = false
+        if let stored = unconfirmed.removeValue(forKey: id),
+            !SessionRestore.binds(stored, to: captureTime, savedBySchema: restoredFile?.schemaVersion ?? 0)
+        {
+            session.discardMark(of: id)
+            clearedDecisions += 1
+            cleared = true
+        }
+        if cleared || session.storedMarks[id] != nil { saveSoon() }
+    }
+
     /// Quitting can't wait for an async task, so this blocks briefly until the latest state is on disk.
     private func saveBeforeQuitting() {
         guard let key = sessionKey else { return }
-        let file = SessionFile(key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames)
+        let file = SessionFile(
+            key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames,
+            captureTimes: knownCaptureTimes)
         let store = store
         let done = DispatchSemaphore(value: 0)
         Task.detached {
@@ -303,6 +348,8 @@ final class CullModel {
             if let frame = before.frame, let index = frames.firstIndex(where: { $0.id == frame }),
                 session.mark(at: index) != before.mark
             {
+                // Decided just now, on the photo on screen: no longer a restored decision to confirm.
+                unconfirmed.removeValue(forKey: frame)
                 flash(for: command, mark: session.mark(at: index))
             }
             if session.cursor != before.cursor || session.currentFrameID != before.frame {
@@ -614,6 +661,7 @@ final class CullModel {
             guard generation == self.generation else { return }
             inFlight.remove(key)
             headers[frame.id] = header
+            captureTimeRead(for: frame.id, header.exif.captureTime)
             thumbnailsChanged()
             if currentFrame?.id == frame.id, !currentIsDisplayQuality, let image = thumbnailImage(for: frame.id) {
                 currentImage = image

@@ -205,11 +205,12 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 ### - [ ] T15a: A camera card is always scanned whole, and capture time joins frame identity
 **Description:** Two changes to code from phases 1–2 that Apply's safety rests on (review 3, findings 1 and 11).
 - `SourceLocator.identityBase` returns the volume root only for a camera card (removable or ejectable, with `DCIM/NNN_FUJI`); any other folder is its own base and is keyed by path. Opening a folder inside a card scans the whole card.
+- A camera card with no volume UUID (the X-T50's FAT32 format writes none: measured 2026-10-10) is keyed by capacity and format time.
 - `StoredFrame` keeps the capture time once known. A restored decision whose capture time differs from the scanned frame's, or is missing on either side once metadata has been read, is dropped (the frame goes back to Undecided) and counted in a notice.
 **Acceptance:**
-- [ ] Opening `DCIM/124_FUJI` on a card yields the same frames, key and decisions as opening the card.
-- [ ] Two folders on one non-card drive get separate sessions.
-- [ ] A stored Reject does not bind to a frame with the same path and sizes but a different capture time.
+- [x] Opening `DCIM/124_FUJI` on a card yields the same frames, key and decisions as opening the card. _Unit-tested; and on the throwaway card every folder gives key `card-8001716224-20261010T235520` and 27 pairs (read-only script). Manual check in the app still to do._
+- [x] Two folders on one non-card drive get separate sessions.
+- [x] A stored Reject does not bind to a frame with the same path and sizes but a different capture time.
 **Verify:** `make test`; manual: open a subfolder of a card.
 **Depends on:** T9
 **Files:** `SourceLocator.swift`, `SessionKey.swift`, `SessionFile.swift`, `CullModel.swift`, their tests

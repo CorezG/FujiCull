@@ -32,6 +32,19 @@ The third doubt review of the Apply design raised questions that only measuremen
 
 So "removable" distinguishes a card in this reader from the SSD, and "external" means `volumeIsInternal == false`.
 
+## A card formatted in the X-T50 can have no volume ID
+
+The 8 GB throwaway card was formatted in the X-T50 and 27 RAW+JPEG frames were shot on it. Read-only checks:
+
+| | Result |
+|---|---|
+| Format | FAT32 (the SD standard for cards up to 32 GB), volume name `NO NAME` |
+| `volumeUUIDString` | **nil**. `diskutil` shows an all-zero UUID; `fgetattrlist(ATTR_VOL_UUID)` fails with `EINVAL`. |
+| `volumeCreationDate` | The moment of the format by the camera's clock (the root, `FFDB` and `UPD` share it to the second). |
+| Folders written | `DCIM/124_FUJI` (the folder and file numbers continue from the camera's counter), `FFDB`, `UPD` |
+
+So the camera writes no volume serial on FAT32, and every small card it formats looks the same to macOS by name and ID. FujiCull keys such a card by capacity and format time instead (DESIGN §5.3). The 256 GB exFAT card does report a UUID; whether an in-camera exFAT format changes it is still unmeasured, and the design no longer depends on the answer (SR2).
+
 ## Not measured
 
 - Whether the SSD's USB bridge really flushes its cache on `F_FULLFSYNC`. Mitigated by the Eject button and by the

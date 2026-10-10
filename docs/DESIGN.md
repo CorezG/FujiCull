@@ -143,6 +143,7 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
   - There is **one session per card**; there are never several side by side.
 - **Session key** (R20, SR1):
   - A camera card (§5.7, SR8) is keyed by its `volumeUUIDString`, whichever folder on it was opened. Its FrameIDs are relative to the volume root and the whole card is scanned.
+  - A camera card **without a volume UUID** is keyed by its capacity and the wall-clock time it was formatted (`card-<bytes>-<yyyyMMddTHHmmss>`). The X-T50 formats small (FAT32) cards with no volume serial, so macOS reports no UUID and names every such card "NO NAME" (measured 2026-10-10). A format therefore starts a new session for these cards. If the format time is missing too, the key falls back to the path.
   - Any other folder, on the internal disk or on any other drive, is keyed by its canonical path, so two folders on one drive have separate sessions.
 - **Lock** (SR3): while a source is open, FujiCull holds an exclusive lock (`O_EXLOCK` on `Locks/<key>.lock`). A second window or process can't open the same card.
 - **Restore** (SR2, SR4):
@@ -212,7 +213,7 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
 
 - **Freeze** (SR6). Apply is modal. From planning until the summary closes, culling commands are disabled.
 - **Same card** (SR16). Apply rescans the card and waits for the metadata pass, so every frame's capture time is known (SR2).
-  - Before every file read and every delete, it checks that the source volume's UUID, read from the open descriptor, still equals the session key. A mismatch **stops the run**. A card swapped mid-session is therefore caught.
+  - Before every file read and every delete, it checks that the card's identity, read from the open descriptor, still equals the session key: the volume UUID, or for a card without one its capacity and format time (§5.3). A mismatch **stops the run**. A card swapped mid-session is therefore caught.
   - It also checks that the file's size and mtime still match the fresh snapshot. A mismatch **skips that frame** and reports it; SR24 covers the time-zone case.
 - **Archive identity** (SR7):
   - The archive is remembered by **volume UUID**, and its mount point is looked up every run. If it isn't mounted, Apply stops.

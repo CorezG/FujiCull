@@ -47,7 +47,8 @@ and tests in T4, T13 and T14._
   | Volume UUID | `DB8E88CF-…` | `DB8E88CF-…` (unchanged) |
 
   The photos stay readable while locked, and the card mounts writable again after unlocking. So R6 can rely on `volumeIsReadOnly`, as DESIGN assumed. This is specific to this reader: some USB readers ignore the switch, so the Apply gate should still treat a failed delete as the fallback signal.
-- **Still to test:** whether an in-camera format changes the UUID. It erases the card, so it waits until the card's photos are archived (or a spare card is used).
+- **In-camera format, small card** (2026-10-10): an 8 GB card formatted in the X-T50 is FAT32 and reports **no volume UUID at all**. Details and the consequence for session keys are in [the exFAT spike note](2026-10-10-exfat-fskit.md).
+- **Still to test:** whether an in-camera format changes the UUID of the 256 GB exFAT card. It erases the card, so it waits until the card's photos are archived. Nothing depends on the answer any more: frame identity includes the capture time (SR2).
 
 ## S4 — Speed on this Mac and card ✅
 
