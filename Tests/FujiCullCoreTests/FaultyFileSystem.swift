@@ -191,7 +191,8 @@ final class FaultyFileSystem: FileSystem {
     func moveToTrash(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> String? {
         let call = try enter(.trash, name)
         if try base.entry(".TestTrash", in: folder) == nil { try base.createFolder(".TestTrash", in: folder) }
-        let trashed = ".TestTrash/\(name) \(call)"
+        let leaf = name.split(separator: "/").last.map(String.init) ?? name
+        let trashed = ".TestTrash/\(leaf) \(call)"
         try base.rename(name, to: trashed, in: folder)
         leave(.trash, call)
         return folder.path + "/" + trashed

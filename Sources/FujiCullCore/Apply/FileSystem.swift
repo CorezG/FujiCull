@@ -71,11 +71,14 @@ public struct EntryInfo: Equatable, Sendable {
     public let size: Int64
     public let modified: Date
     public let isRegularFile: Bool
+    /// Locked in Finder, or flagged immutable: it can't be deleted until that is cleared.
+    public let isImmutable: Bool
 
-    public init(size: Int64, modified: Date, isRegularFile: Bool) {
+    public init(size: Int64, modified: Date, isRegularFile: Bool, isImmutable: Bool = false) {
         self.size = size
         self.modified = modified
         self.isRegularFile = isRegularFile
+        self.isImmutable = isImmutable
     }
 }
 

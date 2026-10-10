@@ -39,7 +39,9 @@ public struct LocalFileSystem: FileSystem {
         let modified = Date(
             timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec) + TimeInterval(info.st_mtimespec.tv_nsec)
                 / 1e9)
-        return EntryInfo(size: Int64(info.st_size), modified: modified, isRegularFile: info.st_mode & S_IFMT == S_IFREG)
+        return EntryInfo(
+            size: Int64(info.st_size), modified: modified, isRegularFile: info.st_mode & S_IFMT == S_IFREG,
+            isImmutable: info.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE) != 0)
     }
 
     public func createExclusively(

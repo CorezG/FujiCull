@@ -59,6 +59,24 @@ import Testing
         #expect(entry == EntryInfo(size: 1234, modified: modified, isRegularFile: true))
     }
 
+    @Test func aLockedFileIsReportedAsImmutable() throws {
+        let tree = try TempTree()
+        let file = try tree.file("locked.JPG")
+        try tree.file("free.JPG")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+        defer {
+            do {
+                try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            } catch {
+                Issue.record("could not unlock the test file: \(error)")
+            }
+        }
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        #expect(try fs.entry("locked.JPG", in: folder)?.isImmutable == true)
+        #expect(try fs.entry("free.JPG", in: folder)?.isImmutable == false)
+    }
+
     @Test func aMissingEntryIsNil() throws {
         let tree = try TempTree()
         let folder = try fs.openFolder(at: tree.root.path)

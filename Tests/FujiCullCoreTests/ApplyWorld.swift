@@ -16,6 +16,9 @@ final class ApplyWorld {
     /// Set to pretend the session was opened for a card with this volume UUID.
     var cardUUID: String?
     var archiveRoots: [String: String]
+    /// The SD lock switch.
+    var cardIsReadOnly = false
+    var cardIsCameraCard = true
 
     init(trip: String = "Japan 2026") throws {
         card = try TempTree()
@@ -76,7 +79,7 @@ final class ApplyWorld {
             })
         return ApplyExecutor.Context(
             frames: scan.frames, videos: scan.videos, otherFiles: scan.otherFiles, marks: marks, captureTimes: times,
-            source: ApplyInput.Source(volumeUUID: cardUUID, isCameraCard: true, isReadOnly: false),
+            source: ApplyInput.Source(volumeUUID: cardUUID, isCameraCard: cardIsCameraCard, isReadOnly: cardIsReadOnly),
             destination: destination,
             archiveRoots: archiveRoots)
     }
@@ -100,6 +103,31 @@ final class ApplyWorld {
         _ = try executor.recover()
         let plan = try executor.makePlan()
         return (executor.copy(plan, isCancelled: { false }), executor)
+    }
+
+    struct Finished {
+        let plan: ApplyPlan
+        let copy: ApplyExecutor.CopyOutcome
+        let check: ApplyExecutor.FinalCheck
+        let gate: ApplyExecutor.Gate
+        let removal: ApplyExecutor.RemovalOutcome
+        let executor: ApplyExecutor
+        var summary: ApplySummary { ApplySummary(plan: plan, copy: copy, check: check, gate: gate, removal: removal) }
+    }
+
+    /// A whole Apply: recover, plan, copy, tag, final check, gate, confirm, remove, delete.
+    @discardableResult
+    func apply(
+        _ fs: any FileSystem = FaultyFileSystem(), confirm: (ApplyExecutor.Confirmation) -> Bool = { _ in true }
+    ) throws -> Finished {
+        let executor = try executor(fs)
+        _ = try executor.recover()
+        let plan = try executor.makePlan()
+        let copy = executor.copy(plan, isCancelled: { false })
+        let check = try executor.finalCheck()
+        let gate = try executor.gate(plan: plan, outcome: copy, check: check, isCancelled: { false })
+        let removal = executor.removeAndDelete(plan, gate: gate, confirm: confirm, isCancelled: { false })
+        return Finished(plan: plan, copy: copy, check: check, gate: gate, removal: removal, executor: executor)
     }
 
     // MARK: Looking at the archive

@@ -276,7 +276,7 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 **Files:** `Sources/FujiCullCore/Apply/{ApplyExecutor,FinderTags}.swift`, `Tests/FujiCullCoreTests/ApplyExecutorCopyTests.swift`
 **Scope:** M
 
-### - [ ] T20: ApplyExecutor, part 2 — gate, archive removal (Trash), card deletion
+### - [x] T20: ApplyExecutor, part 2 — gate, archive removal (Trash), card deletion
 **Description:**
 - Enforce the R22 gate: every Keep frame on the card must be verified, and the card must not be read-only.
 - After a confirmation callback, move archive files of frames rejected after archiving to the Trash. Each file must match its ledger size and mtime.
@@ -284,19 +284,20 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 - Record everything in the ledger, and produce the summary model.
 **Safety rules:** SR16 (volume mismatch stops the run, file mismatch skips the frame), SR17 (gate: final check passed, earlier-run files re-hashed, every destination reachable, Google Photos excluded, Copy again / Locate folder, never silent re-copy), SR18 (archive removal: check all, `trashing`, trash, `trashed`; a failed move is never replaced by an unlink; runs even on a locked card), SR19 (card delete: Reject still, capture time present, snapshot match, deletable flags; `deleting`, unlink, `deleted`; split-pair handling), SR25 (recovery settles intent records), SR27 (card folder synced after each folder and every 100 files), SR8 (Trash for non-card sources).
 **Acceptance:**
-- [ ] In every fault test from T16/T19, **zero files are deleted from the card or the archive**.
-- [ ] A card file changed since the scan is skipped and reported.
-- [ ] An archive file changed since verification is skipped and reported.
-- [ ] A read-only card skips card deletion but still allows the confirmed archive removal.
-- [ ] Declining the confirmation deletes nothing.
-- [ ] A crash between a Trash move or unlink and its record is settled on the next run, with no frame skipped for ever.
+- [x] In every fault test from T16/T19, **zero files are deleted from the card or the archive**. _One file operation is made to fail at the first, middle and last call of every kind (every call under `make check-full`); a card file may only be deleted if every keeper is on the archive byte for byte._
+- [x] A card file changed since the scan is skipped and reported.
+- [x] An archive file changed since verification is skipped and reported.
+- [x] A read-only card skips card deletion but still allows the confirmed archive removal.
+- [x] Declining the confirmation deletes nothing.
+- [x] A crash between a Trash move or unlink and its record is settled on the next run, with no frame skipped for ever.
+- [x] The delete functions can't run without a gate, and a gate can only be made by the executor from its own final check. A plan that wrongly names a keeper, an undecided frame or someone else's archive file is refused.
 **Verify:** `make test`
 **Depends on:** T19
 **Files:** `ApplyExecutor.swift`, `Sources/FujiCullCore/Apply/ApplySummary.swift`, `Tests/FujiCullCoreTests/ApplyExecutorDeleteTests.swift`
 **Scope:** M
 
 ### Checkpoint D — Apply core proven
-- [ ] `make test` is green, with every Apply branch exercised (check with `swift test --enable-code-coverage`).
+- [x] `make test` is green, with every Apply branch exercised (check with `swift test --enable-code-coverage`). _385 tests; every file in `Apply/` is at or above the 95% line-coverage rule._
 - [ ] You review the fault-injection test list before any UI connects to it.
 
 ---

@@ -15,6 +15,8 @@ public enum ApplyStop: Error, Equatable, Sendable {
     case destinationAppeared(Ledger.Destination)
     case verificationFailed(ArchiveLocation)
     case io(FileSystemError)
+    /// Removal was asked for without a gate that allows it.
+    case gateClosed
 }
 
 /// Carries out Apply (DESIGN §5.7, Executor): recover, copy and verify, tag, check, and only then remove.
@@ -117,10 +119,12 @@ public final class ApplyExecutor {
     static let partialSuffix = ".fujicull-partial"
 
     public private(set) var ledger: Ledger
-    private let fs: any FileSystem
+    let fs: any FileSystem
     private let journal: LedgerJournal
-    private let card: OpenFolder
-    private let context: Context
+    let card: OpenFolder
+    let context: Context
+    /// Files hashed from the device in this run: copied, or adopted in recovery. The gate re-hashes the rest.
+    var verifiedThisRun: Set<ArchiveLocation> = []
     private var roots: [String: OpenFolder] = [:]
     private var folders: [FolderKey: OpenFolder] = [:]
 
@@ -171,6 +175,7 @@ public final class ApplyExecutor {
                 } else if let verified = try completedCopy(file, size: entry.size, in: folder) {
                     // The rename had happened; only the record was missing.
                     try record(verified)
+                    verifiedThisRun.insert(file.location)
                     recovery.adopted.append(file.location)
                     adopted = true
                 }
@@ -378,6 +383,7 @@ public final class ApplyExecutor {
                     .verified(
                         owner: copy.owner, role: copy.role, location: copy.to, source: source, size: result.size,
                         sha256: result.sha256))
+                verifiedThisRun.insert(copy.to)
                 outcome.copied.append(copy.to)
                 try tagNewFile(copy, in: request.copy.destination, &outcome)
             } catch let failure as SafeCopy.Failure {
@@ -557,7 +563,7 @@ public final class ApplyExecutor {
         return trip
     }
 
-    private func folder(for location: ArchiveLocation, create: Bool) throws(ApplyStop) -> OpenFolder? {
+    func folder(for location: ArchiveLocation, create: Bool) throws(ApplyStop) -> OpenFolder? {
         let destination = Ledger.Destination(volumeUUID: location.volumeUUID, folder: location.folder)
         guard let trip = try tripFolder(destination, create: create) else { return nil }
         guard let subfolder = location.subfolder else { return trip }
@@ -584,7 +590,7 @@ public final class ApplyExecutor {
         }
     }
 
-    private func hash(_ path: String, in folder: OpenFolder) throws(ApplyStop) -> String {
+    func hash(_ path: String, in folder: OpenFolder) throws(ApplyStop) -> String {
         let file = try io(try fs.openForReading(path, in: folder))
         var hasher = SHA256()
         while true {
@@ -596,7 +602,7 @@ public final class ApplyExecutor {
     }
 
     /// Appends to the journal, then to the in-memory ledger. If the journal can't be written, the run stops.
-    private func record(_ record: LedgerRecord) throws(ApplyStop) {
+    func record(_ record: LedgerRecord) throws(ApplyStop) {
         do {
             try journal.append(record)
         } catch {
@@ -606,7 +612,7 @@ public final class ApplyExecutor {
     }
 }
 
-private func io<T>(_ body: @autoclosure () throws(FileSystemError) -> T) throws(ApplyStop) -> T {
+func io<T>(_ body: @autoclosure () throws(FileSystemError) -> T) throws(ApplyStop) -> T {
     do {
         return try body()
     } catch {
