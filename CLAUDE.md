@@ -6,7 +6,8 @@ Read CONSTRAINTS.md before writing code. Do not weaken it to make a change pass.
 
 - What to build: docs/REQUIREMENTS.md. How: docs/DESIGN.md and docs/decisions/ (ADRs). Hardware facts: docs/spikes/.
 - Work items: tasks/todo.md, in order; tasks/plan.md for the overview.
-- Before calling a task done: `make check` (until T1 creates it, run scripts/floor-guard.py and scripts/check-boundaries.sh).
+- Before calling a task done: `make check` (every check in CONSTRAINTS.md, at most 90 s). At checkpoints: `make check-full`.
+- Build and launch the app: `make run`.
 - Never point code or tests at real volumes (Fuji SD, C&J Archive). Use temp directories. `Sample Images/` is gitignored and never committed.
 
 ## graphify

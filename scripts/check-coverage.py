@@ -68,6 +68,10 @@ for rel, (c, n) in sorted(files.items()):
     elif rel in changed and p < CHANGED_MIN:
         fails.append("[changed-coverage] %s: %.1f%% < %.0f%%" % (rel, p, CHANGED_MIN))
 
+unmeasured = sorted(f for f in changed if f.startswith(COUNTED_DIRS) and f.endswith(".swift") and f not in files)
+for f in unmeasured:
+    print("check-coverage: %s has no executable lines in the report (declarations only, or not compiled)" % f)
+
 tc = sum(c for c, _ in files.values())
 tn = sum(n for _, n in files.values())
 print("check-coverage: Core + Imaging line coverage %.1f%% (%d/%d lines, %d files)"

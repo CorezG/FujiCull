@@ -7,13 +7,13 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ## Phase 0 — Scaffold
 
-### - [ ] T1: Package, Makefile and an empty app that launches
+### - [x] T1: Package, Makefile and an empty app that launches
 **Description:** Create `Package.swift` with targets `FujiCullCore`, `FujiCullImaging` and `FujiCullApp` (Swift 6 language mode, macOS 14) and two test targets. Add a Makefile with `build`, `test` (using the CLT Testing.framework flags from ADR-001), `app`, `run`, `format`, `lint` and `clean`. Add `Resources/Info.plist`. The app opens one dark, empty window.
 **Acceptance:**
-- [ ] `make test` runs at least one Swift Testing test per test target, and it passes.
-- [ ] `make app` produces an ad-hoc-signed `build/FujiCull.app` that launches and shows a dark window.
-- [ ] `make lint` passes.
-- [ ] `make check` runs every task-end check in CONSTRAINTS.md (format, `-warnings-as-errors` build, floor guard, boundaries, tests with `--enable-code-coverage`, coverage check) and prints its duration. `make check-full` adds the slow tests. A `.swift-format` config is committed.
+- [x] `make test` runs at least one Swift Testing test per test target, and it passes.
+- [x] `make app` produces an ad-hoc-signed `build/FujiCull.app` that launches and shows a dark window.
+- [x] `make lint` passes.
+- [x] `make check` runs every task-end check in CONSTRAINTS.md (format, `-warnings-as-errors` build, floor guard, boundaries, tests with `--enable-code-coverage`, coverage check) and prints its duration. `make check-full` adds the slow tests. A `.swift-format` config is committed.
 **Verify:** `make check && make run`
 **Depends on:** —
 **Files:** `Package.swift`, `Makefile`, `Resources/Info.plist`, `Sources/FujiCullApp/FujiCullApp.swift`, plus a placeholder source file and a test in each target
