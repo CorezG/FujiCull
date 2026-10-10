@@ -112,6 +112,27 @@ private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async 
         #expect(log.all == ["busy", "DSCF0005"])
     }
 
+    @Test func cancellingTheViewerWindowLeavesBackgroundWorkQueued() async throws {
+        let reader = CardReader()
+        let log = RunLog()
+        let gate = Gate()
+        let blocker = Task {
+            try await reader.submit(key: "busy", priority: .current, work: gate.job(log: log, key: "busy"))
+        }
+        try await waitUntil { log.all.contains("busy") }
+
+        let prefetch = Task { try await reader.submit(key: "t1:old", priority: .ahead1) { log.append("t1:old") } }
+        let metadata = Task { try await reader.submit(key: "t0:42", priority: .background) { log.append("t0:42") } }
+        try await waitUntil { await reader.pendingCount == 2 }
+        await reader.cancelPending(except: [], upTo: .behind1)
+        gate.release.signal()
+
+        _ = try await blocker.value
+        try await metadata.value
+        await #expect(throws: CancellationError.self) { try await prefetch.value }
+        #expect(log.all == ["busy", "t0:42"])
+    }
+
     @Test func onlyOneRequestRunsAtATime() async throws {
         let reader = CardReader()
         let inFlight = OSAllocatedUnfairLock(initialState: (now: 0, peak: 0))

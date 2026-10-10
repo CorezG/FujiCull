@@ -51,10 +51,11 @@ public actor CardReader {
         }
     }
 
-    /// Cancels every waiting request whose key isn't in `keep`, for example when the cursor moves.
-    public func cancelPending(except keep: Set<String>) {
+    /// Cancels every waiting request whose key isn't in `keep` and whose priority is at most `upTo`, for example
+    /// the viewer's prefetch window when the cursor moves, while the background metadata pass carries on.
+    public func cancelPending(except keep: Set<String>, upTo: ReadPriority = .background) {
         let (stay, drop) = pending.reduce(into: ([Job](), [Job]())) { result, job in
-            if keep.contains(job.key) { result.0.append(job) } else { result.1.append(job) }
+            if keep.contains(job.key) || job.priority > upTo { result.0.append(job) } else { result.1.append(job) }
         }
         pending = stay
         for job in drop { job.cancel() }

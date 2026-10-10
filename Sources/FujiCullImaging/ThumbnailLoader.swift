@@ -3,6 +3,13 @@ import Foundation
 import FujiCullCore
 import ImageIO
 
+/// T0 as read from the card: the embedded thumbnail still compressed (about 9 KB), plus EXIF.
+/// Kept like this for every frame; only visible ones are decoded (DESIGN §5.4 memory budget).
+public struct ThumbnailHeader: Sendable {
+    public let thumbnailJPEG: Data?
+    public let exif: ExifSummary
+}
+
 /// The T0 tier: the camera's embedded thumbnail, upright, plus EXIF (DESIGN §5.4).
 public struct Thumbnail {
     /// nil when the file has no usable embedded thumbnail.
@@ -22,6 +29,18 @@ public enum ThumbnailLoader {
 
     /// Reads only the start of the file, parses EXIF, decodes the embedded thumbnail and turns it upright.
     public static func load(_ url: URL) throws -> Thumbnail {
+        let header = try loadHeader(url)
+        let image = header.thumbnailJPEG.flatMap { decodeThumbnail($0, orientation: header.exif.orientation) }
+        return Thumbnail(image: image, exif: header.exif)
+    }
+
+    /// Decodes a compressed T0 thumbnail and turns it upright.
+    public static func decodeThumbnail(_ jpeg: Data, orientation: Int) -> CGImage? {
+        decode(jpeg).flatMap { oriented($0, orientation: orientation) }
+    }
+
+    /// Reads only the start of the file and returns the thumbnail still compressed, plus EXIF.
+    public static func loadHeader(_ url: URL) throws -> ThumbnailHeader {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var head = try handle.read(upToCount: firstRead) ?? Data()
@@ -39,11 +58,9 @@ public enum ThumbnailLoader {
         case .notJPEG:
             throw LoadError.notJPEG(path: url.path)
         case .parsed(let exif):
-            let image = exif.thumbnail.flatMap { decode(head.subdata(in: $0)) }
-                .flatMap { oriented($0, orientation: exif.orientation) }
-            return Thumbnail(image: image, exif: exif)
+            return ThumbnailHeader(thumbnailJPEG: exif.thumbnail.map { head.subdata(in: $0) }, exif: exif)
         case .needMoreBytes, .noExif, .malformed:
-            return Thumbnail(image: nil, exif: ExifSummary())
+            return ThumbnailHeader(thumbnailJPEG: nil, exif: ExifSummary())
         }
     }
 

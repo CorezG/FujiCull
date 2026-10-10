@@ -67,6 +67,16 @@ struct BrowseView: View {
     let model: CullModel
 
     var body: some View {
+        VStack(spacing: 0) {
+            viewer
+            if !model.frames.isEmpty {
+                FilmstripView(model: model, session: model.session, thumbnailRevision: model.thumbnailRevision)
+                    .frame(height: FilmstripCell.height + 24)
+            }
+        }
+    }
+
+    private var viewer: some View {
         ZStack(alignment: .bottom) {
             ViewerRepresentable(
                 image: model.currentImage, dimmed: model.currentMark.decision == .reject, onKey: handle)

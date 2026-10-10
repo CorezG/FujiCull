@@ -34,6 +34,19 @@ private func fixtureURL(_ name: String) -> URL {
         #expect(image.width == 120 && image.height == 160)
     }
 
+    @Test func theHeaderCanBeKeptCompressedAndDecodedLater() throws {
+        let header = try ThumbnailLoader.loadHeader(fixtureURL("DSCF3406-head64k.JPG"))
+
+        let jpeg = try #require(header.thumbnailJPEG)
+        #expect(jpeg.count < 20_000, "about 9 KB, so 2,000 frames fit in ~20 MB (DESIGN §5.4)")
+        let image = try #require(ThumbnailLoader.decodeThumbnail(jpeg, orientation: header.exif.orientation))
+        #expect(image.width == 120 && image.height == 160)
+    }
+
+    @Test func decodingSomethingThatIsNotAJPEGGivesNoImage() {
+        #expect(ThumbnailLoader.decodeThumbnail(Data("nope".utf8), orientation: 1) == nil)
+    }
+
     @Test func aMissingFileThrows() {
         #expect(throws: (any Error).self) {
             try ThumbnailLoader.load(URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString).JPG"))

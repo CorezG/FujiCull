@@ -47,6 +47,8 @@ public enum CullCommand: Equatable, Sendable {
     case previous
     /// Move by this many frames in the visible list (⇧← / ⇧→ use ±10).
     case jump(Int)
+    /// Go straight to a frame, e.g. a click in the filmstrip (R14); ignored if it isn't in the visible list.
+    case goTo(Int)
     case undo
     case toggleUndecidedFilter
 }

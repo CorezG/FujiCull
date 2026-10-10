@@ -85,6 +85,8 @@ public struct CullSession: Equatable, Sendable {
             move(by: -1)
         case .jump(let delta):
             move(by: delta)
+        case .goTo(let index):
+            if frameIDs.indices.contains(index), isVisible(index) { cursor = index }
         case .undo:
             undo()
         case .toggleUndecidedFilter:

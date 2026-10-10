@@ -191,6 +191,26 @@ private func applying(_ commands: [CullCommand], to start: CullSession) -> CullS
         #expect(s.visibleIndices == [0, 1, 2, 3, 4])
     }
 
+    // MARK: Clicking a thumbnail (R14)
+
+    @Test func goToMovesStraightToAFrame() {
+        let s = applying([.goTo(3)], to: session())
+
+        #expect(s.cursor == 3)
+        #expect(s.canUndo == false, "navigation isn't undoable (D3)")
+    }
+
+    @Test func goToIgnoresFramesOutsideTheList() {
+        #expect(applying([.goTo(9)], to: session()).cursor == 0)
+        #expect(applying([.goTo(-1)], to: session()).cursor == 0)
+    }
+
+    @Test func goToIgnoresAFrameHiddenByTheFilter() {
+        let s = applying([.keep, .toggleUndecidedFilter, .goTo(0)], to: session())
+
+        #expect(s.cursor == 1, "frame 0 is kept, so it isn't in the Undecided-only list")
+    }
+
     // MARK: Counts (R16)
 
     @Test func countsFollowEveryChange() {

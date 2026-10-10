@@ -36,6 +36,8 @@ final class CullModel {
     /// The best image available for the current frame: the T1 display image, or its T0 thumbnail meanwhile.
     private(set) var currentImage: CGImage?
     private(set) var currentIsDisplayQuality = false
+    /// Bumped (at most every 100 ms) as the background pass brings in thumbnails, so the filmstrip refreshes.
+    private(set) var thumbnailRevision = 0
 
     @ObservationIgnored private var identityBase: URL?
     @ObservationIgnored private var sourceVolume: URL?
@@ -49,6 +51,10 @@ final class CullModel {
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 100_000_000)
     @ObservationIgnored private var thumbnailCache = PreviewCache<FrameID, CGImage>(byteBudget: 30_000_000)
     @ObservationIgnored private var inFlight: Set<String> = []
+    /// Every frame's T0 once read: the thumbnail still compressed (~9 KB) plus EXIF (DESIGN §5.4).
+    @ObservationIgnored private var headers: [FrameID: ThumbnailHeader] = [:]
+    @ObservationIgnored private var metadataTask: Task<Void, Never>?
+    @ObservationIgnored private var thumbnailRefreshScheduled = false
     /// Bumped whenever a source opens or closes, so results that arrive late are dropped.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -119,8 +125,7 @@ final class CullModel {
                 phase = .resumePrompt(matched: matched, expected: expected)
                 return
             }
-            phase = .browsing
-            showCurrent()
+            beginBrowsing()
         } catch SessionStore.StoreError.alreadyOpen {
             phase = .failed(message: "\(name) is already open in another FujiCull window.")
         } catch SessionStore.StoreError.newerVersion {
@@ -135,9 +140,8 @@ final class CullModel {
         guard case .resumePrompt = phase, let resumed = pendingResume else { return }
         pendingResume = nil
         session = resumed
-        phase = .browsing
         saveSoon()
-        showCurrent()
+        beginBrowsing()
     }
 
     /// Start fresh: the old session and journal are archived, and every frame starts Undecided.
@@ -151,8 +155,13 @@ final class CullModel {
             return
         }
         session = CullSession(frameIDs: frames.map(\.id))
+        beginBrowsing()
+    }
+
+    private func beginBrowsing() {
         phase = .browsing
         showCurrent()
+        startMetadataPass()
     }
 
     /// For menus and notifications, which can't await.
@@ -180,6 +189,9 @@ final class CullModel {
         currentIsDisplayQuality = false
         displayCache.removeAll()
         thumbnailCache.removeAll()
+        metadataTask?.cancel()
+        metadataTask = nil
+        headers.removeAll()
         inFlight.removeAll()
         identityBase = nil
         sourceVolume = nil
@@ -294,7 +306,7 @@ final class CullModel {
             currentImage = image
             currentIsDisplayQuality = true
         } else {
-            currentImage = thumbnailCache.value(for: frame.id)
+            currentImage = thumbnailImage(for: frame.id)
             currentIsDisplayQuality = false
         }
 
@@ -306,18 +318,23 @@ final class CullModel {
         }
         let keep = Set(window.flatMap { [key(.thumbnail, frames[$0.index].id), key(.display, frames[$0.index].id)] })
         let reader = reader
-        Task { await reader.cancelPending(except: keep) }
+        // Only the viewer's own window is cancelled; filmstrip thumbnails and the background pass carry on.
+        Task { await reader.cancelPending(except: keep, upTo: .behind1) }
 
-        if currentImage == nil { request(.thumbnail, index: session.cursor, priority: .current) }
-        for item in window { request(.display, index: item.index, priority: item.priority) }
+        if currentImage == nil {
+            let index = session.cursor
+            Task { await fetchHeader(index: index, priority: .current) }
+        }
+        for item in window { requestDisplay(index: item.index, priority: item.priority) }
     }
 
-    private func request(_ tier: Tier, index: Int, priority: ReadPriority) {
+    private func requestDisplay(index: Int, priority: ReadPriority) {
         let frame = frames[index]
-        let key = key(tier, frame.id)
-        let cached = tier == .display ? displayCache.value(for: frame.id) : thumbnailCache.value(for: frame.id)
+        let key = key(.display, frame.id)
         // RAF-only frames get their embedded preview in T14.
-        guard cached == nil, !inFlight.contains(key), let jpg = frame.jpg, let base = identityBase else { return }
+        guard displayCache.value(for: frame.id) == nil, !inFlight.contains(key), let jpg = frame.jpg,
+            let base = identityBase
+        else { return }
         inFlight.insert(key)
         let url = base.appendingPathComponent(jpg.relativePath)
         let maxPixelSize = Self.displayPixelSize()
@@ -325,13 +342,16 @@ final class CullModel {
         let reader = reader
         Task {
             do {
-                let image = try await reader.submit(key: key, priority: priority) { () throws -> CGImage? in
-                    switch tier {
-                    case .thumbnail: return try ThumbnailLoader.load(url).image
-                    case .display: return try PreviewPipeline.loadDisplay(url, maxPixelSize: maxPixelSize)
-                    }
+                let image = try await reader.submit(key: key, priority: priority) {
+                    try PreviewPipeline.loadDisplay(url, maxPixelSize: maxPixelSize)
                 }
-                loaded(image, tier: tier, frameID: frame.id, key: key, generation: generation)
+                guard generation == self.generation else { return }
+                inFlight.remove(key)
+                displayCache.insert(image, for: frame.id, cost: image.bytesPerRow * image.height)
+                if currentFrame?.id == frame.id {
+                    currentImage = image
+                    currentIsDisplayQuality = true
+                }
             } catch {
                 // Cancelled because the cursor moved on, or unreadable. Either way, let a later visit retry.
                 if generation == self.generation { inFlight.remove(key) }
@@ -339,21 +359,81 @@ final class CullModel {
         }
     }
 
-    private func loaded(_ image: CGImage?, tier: Tier, frameID: FrameID, key: String, generation: Int) {
-        guard generation == self.generation else { return }
-        inFlight.remove(key)
-        guard let image else { return }
-        let cost = image.bytesPerRow * image.height
-        switch tier {
-        case .display: displayCache.insert(image, for: frameID, cost: cost)
-        case .thumbnail: thumbnailCache.insert(image, for: frameID, cost: cost)
+    // MARK: Thumbnails (T0)
+
+    /// Asks for a frame's thumbnail, for a filmstrip cell that has scrolled into view.
+    func requestThumbnail(at index: Int) {
+        Task { await fetchHeader(index: index, priority: .thumbnail) }
+    }
+
+    func hasThumbnail(at index: Int) -> Bool {
+        frames.indices.contains(index) && headers[frames[index].id] != nil
+    }
+
+    /// The upright thumbnail for a frame, decoded on demand from its compressed T0 and cached (LRU).
+    func thumbnailImage(at index: Int) -> CGImage? {
+        frames.indices.contains(index) ? thumbnailImage(for: frames[index].id) : nil
+    }
+
+    private func thumbnailImage(for id: FrameID) -> CGImage? {
+        if let cached = thumbnailCache.value(for: id) { return cached }
+        guard let header = headers[id], let jpeg = header.thumbnailJPEG,
+            let image = ThumbnailLoader.decodeThumbnail(jpeg, orientation: header.exif.orientation)
+        else { return nil }
+        thumbnailCache.insert(image, for: id, cost: image.bytesPerRow * image.height)
+        return image
+    }
+
+    /// Reads a frame's T0 once; returns when it's stored, cancelled or already being fetched elsewhere.
+    private func fetchHeader(index: Int, priority: ReadPriority) async {
+        guard frames.indices.contains(index) else { return }
+        let frame = frames[index]
+        let key = key(.thumbnail, frame.id)
+        guard headers[frame.id] == nil, !inFlight.contains(key), let jpg = frame.jpg, let base = identityBase
+        else { return }
+        inFlight.insert(key)
+        let url = base.appendingPathComponent(jpg.relativePath)
+        let generation = generation
+        do {
+            let header = try await reader.submit(key: key, priority: priority) { try ThumbnailLoader.loadHeader(url) }
+            guard generation == self.generation else { return }
+            inFlight.remove(key)
+            headers[frame.id] = header
+            thumbnailsChanged()
+            if currentFrame?.id == frame.id, !currentIsDisplayQuality, let image = thumbnailImage(for: frame.id) {
+                currentImage = image
+            }
+        } catch {
+            if generation == self.generation { inFlight.remove(key) }
         }
-        guard currentFrame?.id == frameID else { return }
-        if tier == .display {
-            currentImage = image
-            currentIsDisplayQuality = true
-        } else if !currentIsDisplayQuality {
-            currentImage = image
+    }
+
+    /// Reads every frame's T0 in the background, starting at the cursor (DESIGN §5.4). About 4.5 s for
+    /// 2,091 frames on Fuji SD; viewer requests always jump ahead of it in the card reader's queue.
+    private func startMetadataPass() {
+        metadataTask?.cancel()
+        let order = MetadataPass.order(count: frames.count, startingAt: session.cursor)
+        let generation = generation
+        metadataTask = Task {
+            for index in order {
+                if Task.isCancelled || generation != self.generation { return }
+                await fetchHeader(index: index, priority: .background)
+            }
+        }
+    }
+
+    private func thumbnailsChanged() {
+        guard !thumbnailRefreshScheduled else { return }
+        thumbnailRefreshScheduled = true
+        Task {
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                thumbnailRefreshScheduled = false
+                return
+            }
+            thumbnailRefreshScheduled = false
+            thumbnailRevision += 1
         }
     }
 
