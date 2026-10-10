@@ -84,6 +84,9 @@ public struct EntryInfo: Equatable, Sendable {
 public protocol FileSystem: Sendable {
     func openFolder(at path: String) throws(FileSystemError) -> OpenFolder
 
+    /// Opens a folder inside an open folder, by name.
+    func openFolder(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> OpenFolder
+
     /// The UUID of the volume the folder is on, read from the open folder itself; nil if the volume has
     /// none (a FAT32 card formatted in the camera doesn't).
     func volumeUUID(of folder: OpenFolder) throws(FileSystemError) -> String?

@@ -10,6 +10,12 @@ public struct LocalFileSystem: FileSystem {
         return OpenFolder(path: path, descriptor: descriptor)
     }
 
+    public func openFolder(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> OpenFolder {
+        let descriptor = openat(folder.descriptor, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        try Self.check(descriptor >= 0, .openFolder, name)
+        return OpenFolder(path: folder.path + "/" + name, descriptor: descriptor)
+    }
+
     public func volumeUUID(of folder: OpenFolder) throws(FileSystemError) -> String? {
         var request = attrlist()
         request.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)

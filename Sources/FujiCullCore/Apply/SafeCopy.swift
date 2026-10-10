@@ -65,27 +65,30 @@ public enum SafeCopy {
         ".\(finalName).fujicull-partial"
     }
 
+    /// `onProgress` is called after each chunk is written, with the bytes written so far.
     public static func copy(
-        _ request: Request, using fs: some FileSystem, isCancelled: () -> Bool = { Task.isCancelled }
+        _ request: Request, using fs: some FileSystem, isCancelled: () -> Bool = { Task.isCancelled },
+        onProgress: (Int64) -> Void = { _ in }
     ) throws(Failure) -> Result {
         // Names this call creates in the destination, so a failure can remove exactly those and nothing else.
         var created: [String] = []
         do {
-            return try run(request, fs, isCancelled, &created)
+            return try run(request, fs, isCancelled, onProgress, &created)
         } catch {
             throw Failure(reason: error, leftBehind: cleanUp(created, in: request.destination, fs))
         }
     }
 
     private static func run(
-        _ request: Request, _ fs: some FileSystem, _ isCancelled: () -> Bool, _ created: inout [String]
+        _ request: Request, _ fs: some FileSystem, _ isCancelled: () -> Bool, _ onProgress: (Int64) -> Void,
+        _ created: inout [String]
     ) throws(Reason) -> Result {
         let partial = partialName(for: request.finalName)
         let folder = request.destination
 
         // An early look, so a taken name costs nothing. The claim further down is what actually decides.
         if try io(try fs.entry(request.finalName, in: folder)) != nil { throw .nameTaken(request.finalName) }
-        let written = try writePartial(request, partial, fs, isCancelled, &created)
+        let written = try writePartial(request, partial, fs, isCancelled, onProgress, &created)
         guard written.size == request.expectedSize else {
             throw .sourceChanged(expectedSize: request.expectedSize, actualSize: written.size)
         }
@@ -119,7 +122,7 @@ public enum SafeCopy {
     /// Streams the source into the partial, hashing as it goes, and makes it durable.
     private static func writePartial(
         _ request: Request, _ partial: String, _ fs: some FileSystem, _ isCancelled: () -> Bool,
-        _ created: inout [String]
+        _ onProgress: (Int64) -> Void, _ created: inout [String]
     ) throws(Reason) -> Result {
         let source = try io(try fs.openForReading(request.sourcePath, in: request.sourceFolder))
         let out = try claim(partial, in: request.destination, fs, uncached: true)
@@ -133,6 +136,7 @@ public enum SafeCopy {
             hasher.update(data: chunk)
             size += Int64(chunk.count)
             try io(try fs.write(chunk, to: out))
+            onProgress(size)
         }
         try io(try fs.syncToDevice(out))
         return Result(sha256: hex(hasher.finalize()), size: size)

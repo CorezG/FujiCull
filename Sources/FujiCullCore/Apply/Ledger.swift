@@ -163,6 +163,27 @@ public struct Ledger: Equatable, Sendable {
     /// Card deletions with no recorded outcome.
     public var unsettledDeletes: [String] { cardFiles.filter { $0.value == .deleting }.keys.sorted() }
 
+    // MARK: Binding (SR2)
+
+    /// Among `candidates` (one owner's files), the archive file the journal proves FujiCull wrote for
+    /// exactly this card file, if there is one and it is still current. `trashing` counts: the move was
+    /// planned, but the file is still there.
+    public func boundFile(
+        among candidates: [ArchiveFile], role: FileRole, to file: SourceFile, captured: CaptureTime?
+    ) -> ArchiveFile? {
+        // A path with a `deleted` record is a closed chapter: whatever is there now is a new file.
+        guard cardFileStatus(file.relativePath) != .deleted else { return nil }
+        return candidates.last { candidate in
+            guard candidate.role == role, candidate.status == .verified || candidate.status == .trashing,
+                let source = candidate.source, source.path == file.relativePath, source.size == file.size
+            else { return false }
+            // The moment the photo was taken settles it. With no capture time on either side (videos, or a
+            // JPG without EXIF) the file's own date stands in.
+            if source.captureTime != nil || captured != nil { return source.captureTime == captured }
+            return source.modified == file.modified
+        }
+    }
+
     // MARK: Folding in a record
 
     public mutating func record(_ record: LedgerRecord) {

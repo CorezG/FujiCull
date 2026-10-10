@@ -71,6 +71,13 @@ final class FaultyFileSystem: FileSystem {
         return result
     }
 
+    func openFolder(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> OpenFolder {
+        let call = try enter(.openFolder, name)
+        let result = try base.openFolder(name, in: folder)
+        leave(.openFolder, call)
+        return result
+    }
+
     func volumeUUID(of folder: OpenFolder) throws(FileSystemError) -> String? {
         let call = try enter(.volumeUUID, folder.path)
         let result = try base.volumeUUID(of: folder)

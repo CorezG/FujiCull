@@ -552,6 +552,16 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         #expect(plan.destinationState == .new)
     }
 
+    @Test func aFolderThisJournalChoseBeforeIsOursEvenIfNothingWasCopiedYet() throws {
+        // The last run created the folder and stopped before its first file.
+        let ledger: [LedgerRecord] = [.destination(volumeUUID: archive, folder: "Japan 2026")]
+
+        let plan = try ApplyPlanner.plan(
+            input([a], marks: [keep], ledger: ledger, listings: [japan: ApplyInput.Listing()]))
+
+        #expect(plan.destinationState == .ours)
+    }
+
     @Test func aRecordedFolderThatCannotBeListedIsReportedAndItsFilesLeftAlone() throws {
         let part2 = Ledger.Destination(volumeUUID: archive, folder: "Japan 2026 part 2")
         let ledger =

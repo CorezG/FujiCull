@@ -227,6 +227,17 @@ import Testing
         }
     }
 
+    @Test func aFolderInsideAnOpenFolderOpensByName() throws {
+        let tree = try TempTree()
+        try tree.file("Japan 2026/Google Photos/DSCF0001.JPG")
+        let trip = try fs.openFolder("Japan 2026", in: try fs.openFolder(at: tree.root.path))
+
+        let staging = try fs.openFolder("Google Photos", in: trip)
+
+        #expect(try fs.names(in: staging) == ["DSCF0001.JPG"])
+        expectError(.openFolder, code: ENOENT) { _ = try fs.openFolder("Videos", in: trip) }
+    }
+
     @Test func aListingHasEveryNameIncludingHiddenOnes() throws {
         let tree = try TempTree()
         try tree.file("DSCF0001.JPG")

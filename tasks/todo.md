@@ -264,13 +264,13 @@ _Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09
 **Files:** `Sources/FujiCullCore/Apply/{ApplyPlanner,ApplyPlan,ApplyError}.swift`, `Tests/FujiCullCoreTests/ApplyPlannerTests.swift`
 **Scope:** M
 
-### - [ ] T19: ApplyExecutor, part 1 — copy, verify, tag, resume
+### - [x] T19: ApplyExecutor, part 1 — copy, verify, tag, resume
 **Description:** Execute a plan's copy operations one after another with `safeCopy`. The Google Photos copy is made from the verified archive file. Each verified file is recorded in the ledger. Finder tags are applied through `NSURL` resource values, merged with existing tags. The executor reports progress (bytes and ETA). It is cancellable. On resume, a final-named file without a ledger entry is adopted only if its hash matches.
 **Safety rules:** SR3 (archive lock), SR15 (records written after each operation), executor step 1 (recover before planning: remove our zero-length placeholder, adopt a completed rename only by hash against the card, then sweep partials), steps 2–4, SR28 (the final check of every keeper always runs and feeds the summary).
 **Acceptance:**
-- [ ] Fault injection at every step, **including between the placeholder claim and the rename**, gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming.
-- [ ] A run interrupted before the Google Photos copies makes them on the next run.
-- [ ] Tags are verified on the archive RAF and JPG after the run, and the `Google Photos/` copy has no Favourite tag (Q11).
+- [x] Fault injection at every step, **including between the placeholder claim and the rename**, gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming. _The drive is made to vanish at the first, middle and last call of every file operation (every call under `make check-full`); a healthy second run must leave exactly the archive an uninterrupted run does, byte for byte, with the same tags._
+- [x] A run interrupted before the Google Photos copies makes them on the next run.
+- [x] Tags are verified on the archive RAF and JPG after the run, and the `Google Photos/` copy has no Favourite tag (Q11).
 **Verify:** `make test`
 **Depends on:** T16, T18
 **Files:** `Sources/FujiCullCore/Apply/{ApplyExecutor,FinderTags}.swift`, `Tests/FujiCullCoreTests/ApplyExecutorCopyTests.swift`

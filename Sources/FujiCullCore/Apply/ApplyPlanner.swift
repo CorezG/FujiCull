@@ -6,8 +6,8 @@ import Foundation
 /// card file only if it **binds** to it (SR2), and a name counts as free only if neither the archive's
 /// listing nor the journal nor this plan says otherwise (SR11).
 public enum ApplyPlanner {
-    private static let googlePhotos = "Google Photos"
-    private static let videos = "Videos"
+    static let googlePhotos = "Google Photos"
+    static let videos = "Videos"
     /// Kept free on the archive on top of what the copies need (SR14).
     private static let margin: Int64 = 1_000_000_000
 
@@ -72,8 +72,11 @@ public enum ApplyPlanner {
             if input.listings[chosen] == nil {
                 plan.destinationState = .new
             } else {
-                plan.destinationState =
-                    input.ledger.allFiles.contains { $0.destination == chosen } ? .ours : .existsNotOurs
+                // A folder this journal chose before is ours even if that run stopped before its first file.
+                let known =
+                    input.ledger.chosenDestination == chosen
+                    || input.ledger.allFiles.contains { $0.destination == chosen }
+                plan.destinationState = known ? .ours : .existsNotOurs
             }
             plan.deleteMode = input.source.isCameraCard ? .permanent : .trash
             plan.leftOnCard.otherFiles = input.otherFiles.map(\.relativePath)
@@ -230,22 +233,10 @@ public enum ApplyPlanner {
 
         private func files(of owner: Owner) -> [Ledger.ArchiveFile] { filesByOwner[owner] ?? [] }
 
-        /// The archive file the journal proves FujiCull wrote for exactly this card file, if there is one
-        /// and it is still current. `trashing` counts: the move was planned but the file is still there.
         private func bound(_ owner: Owner, _ role: FileRole, to file: SourceFile, captured: CaptureTime?) -> Ledger
             .ArchiveFile?
         {
-            // A path with a `deleted` record is a closed chapter: whatever is there now is a new file.
-            guard input.ledger.cardFileStatus(file.relativePath) != .deleted else { return nil }
-            return files(of: owner).last { candidate in
-                guard candidate.role == role, candidate.status == .verified || candidate.status == .trashing,
-                    let source = candidate.source, source.path == file.relativePath, source.size == file.size
-                else { return false }
-                // The moment the photo was taken settles it. With no capture time on either side (videos,
-                // or a JPG without EXIF) the file's own date stands in.
-                if source.captureTime != nil || captured != nil { return source.captureTime == captured }
-                return source.modified == file.modified
-            }
+            input.ledger.boundFile(among: files(of: owner), role: role, to: file, captured: captured)
         }
 
         /// Whether the frame's staging copy was made from its current archive JPG.

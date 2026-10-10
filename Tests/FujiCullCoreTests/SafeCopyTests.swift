@@ -86,6 +86,15 @@ private func sha256(_ data: Data) -> String {
         #expect(fs.calls(.rename) == 1)
     }
 
+    @Test func progressIsReportedAfterEachChunk() throws {
+        let fs = FaultyFileSystem()
+        var reported: [Int64] = []
+
+        _ = try SafeCopy.copy(try request(fs), using: fs, isCancelled: { false }, onProgress: { reported.append($0) })
+
+        #expect(reported == (1...10).map { Int64($0 * 1_000) })
+    }
+
     @Test func theSourceIsNeverModified() throws {
         let fs = FaultyFileSystem()
         let before = try FileManager.default.attributesOfItem(atPath: card.url(sourcePath).path)
