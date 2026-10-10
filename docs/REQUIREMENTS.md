@@ -140,6 +140,7 @@ Apply runs as an ordered, safe sequence:
 - Importing via camera USB; multiple cards per trip.
 - Configurable folder naming or key remapping (fixed defaults in v1).
 - App Store distribution / sandboxing.
+- Showing the Fuji recipe name (C1–C7 custom setting). Checked 2026-10-09: the X-T50 doesn't write the recipe name to the JPG (no MakerNote or XMP field holds it), only the individual settings. Inferring it from settings was offered and declined. Revisit if Fuji firmware starts recording the name.
 
 ## 7. Assumptions to confirm
 
