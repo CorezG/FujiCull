@@ -2,3 +2,4 @@
 Sample Images/
 .build/
 build/
+*.profraw
