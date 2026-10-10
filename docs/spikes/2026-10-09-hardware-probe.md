@@ -35,8 +35,19 @@ and tests in T4, T13 and T14._
 
 ## S3 — Card identity (partial)
 - exFAT does report a volume UUID: card `DB8E88CF-…`, SSD `7CA26A15-…`.
-- ✅ **The UUID is stable across a rename and a different reader.** The card was renamed "Untitled" → "Fuji SD" and moved to the reader you'll use from now on, and the UUID was unchanged. A camera reformat is expected to change it; this is still to confirm, but the ≥ 50% FrameID-overlap rule covers it either way.
-- With the lock switch off, the card is not read-only. The **lock-switch case is still to test**: flip the switch, reinsert, and check `Volume Read-Only`.
+- ✅ **The UUID is stable across a rename and a different reader.** The card was renamed "Untitled" → "Fuji SD" and moved to the reader you'll use from now on, and the UUID was unchanged. A camera reformat is expected to change it (still to confirm, see below), but the ≥ 50% FrameID-overlap rule covers it either way.
+- ✅ **The lock switch is passed through by this reader** (tested 2026-10-10, read-only checks, nothing written):
+
+  | | Unlocked | Locked |
+  |---|---|---|
+  | `diskutil info`: Media Read-Only / Volume Read-Only | No / No | Yes / Yes (read-only mount flag set) |
+  | `mount` flags | no `read-only` | `read-only` |
+  | `URLResourceValues.volumeIsReadOnly` | false | true |
+  | `access(2)` write check on the volume root | writable | not writable |
+  | Volume UUID | `DB8E88CF-…` | `DB8E88CF-…` (unchanged) |
+
+  The photos stay readable while locked, and the card mounts writable again after unlocking. So R6 can rely on `volumeIsReadOnly`, as DESIGN assumed. This is specific to this reader: some USB readers ignore the switch, so the Apply gate should still treat a failed delete as the fallback signal.
+- **Still to test:** whether an in-camera format changes the UUID. It erases the card, so it waits until the card's photos are archived (or a spare card is used).
 
 ## S4 — Speed on this Mac and card ✅
 

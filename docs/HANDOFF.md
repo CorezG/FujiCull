@@ -10,9 +10,8 @@
 - **Reading the timing log:** `/usr/bin/log show --last 30m --style compact --predicate 'subsystem == "com.github.corezg.FujiCull" AND category == "timing"'`. Use the full path: in zsh, `log` is a shell builtin. Lines are `open`, `move`, `zoom` (with read/decode split) and `hold`.
 - **Open items:**
   - **One intermittent test-run crash** (signal 5) during T13. It didn't reproduce in 33 reruns. Watch for it.
-  - **T3 hands-on checks:** the SD lock switch (read-only detection), and the volume UUID after an in-camera format.
-  - **Coverage baseline:** the owner hasn't approved raising it from 94.2% (now ~96%). CONSTRAINTS.md changes need explicit approval (kept loud).
-  - **`.claude/skills/`, `.agents/` and `skills-lock.json`** are still uncommitted; the owner hasn't decided.
+  - **T3, one check left:** the volume UUID after an in-camera format. It erases the card, so it waits until the photos are archived (or a spare card). The lock switch was tested 2026-10-10: this reader passes it through and `volumeIsReadOnly` is true.
+  - Locally installed skills (`.claude/skills/`, `.agents/`, `skills-lock.json`) are gitignored by the owner's choice; the coverage baseline was raised to 95.9% with approval (2026-10-10).
 - **Working agreements:**
   - Rebuild and relaunch the app (`make app && open build/FujiCull.app`) after every change, so Finder and the Dock get the latest build.
   - Gate commits on `make check`'s real exit status, never through a pipe.

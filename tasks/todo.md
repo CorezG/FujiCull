@@ -39,6 +39,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Description:** A throwaway `swift` script, kept in `scripts/spikes/`. Also **format the card in the camera** (after it's backed up and archived) and check whether its `volumeUUIDString` changes; SR2 and SR3 protect either way, but the result goes in the write-up. It checks whether the card reports a stable `volumeUUIDString` across remounts, whether the lock switch gives `volumeIsReadOnly`, the sequential read speed, and the T1 (2560 px) and T2 (full) decode times for X-T50 JPGs.
 **Acceptance:**
 - [ ] Results are written up in `docs/spikes/S3-S4.md` with numbers.
+  _Written up in `docs/spikes/2026-10-09-hardware-probe.md`. Lock switch tested 2026-10-10: this reader passes it through (`volumeIsReadOnly` true). Only the in-camera format check is left; it waits until the card is archived._
 - [ ] DESIGN §5.3 and §5.4 are updated if anything differs from the assumptions.
 **Verify:** Review the write-up together.
 **Depends on:** T1
