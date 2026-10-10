@@ -10,12 +10,17 @@ final class ViewerNSView: NSView {
     var onKey: ((NSEvent) -> Bool)?
     var image: CGImage? { didSet { applyGeometry() } }
     var zoomImage: CGImage? { didSet { applyGeometry() } }
-    var isZoomed = false {
+    /// nil = fit; 1 = 100%.
+    var zoomScale: CGFloat? {
         didSet {
             applyGeometry()
             window?.invalidateCursorRects(for: self)
         }
     }
+    /// The frame's upright size in pixels, known from EXIF before the full image arrives.
+    var pixelSize: CGSize?
+    /// Called with the new zoom when the scroll wheel or a pinch changes it.
+    var onZoom: ((CGFloat?) -> Void)?
     /// Rejected frames are shown dimmed, as in the prototype.
     var dimmed = false { didSet { applyGeometry() } }
 
@@ -54,7 +59,7 @@ final class ViewerNSView: NSView {
     }
 
     override func resetCursorRects() {
-        if isZoomed { addCursorRect(bounds, cursor: .crosshair) }
+        if zoomScale != nil { addCursorRect(bounds, cursor: .crosshair) }
     }
 
     override func layout() {
@@ -64,7 +69,33 @@ final class ViewerNSView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         mouse = convert(event.locationInWindow, from: nil)
-        if isZoomed { applyGeometry() }
+        if zoomScale != nil { applyGeometry() }
+    }
+
+    /// Wheel away from you (or two-finger up) zooms in, towards you zooms out, about the point under the
+    /// mouse; past fit it snaps back to fit.
+    override func scrollWheel(with event: NSEvent) {
+        let raw = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+        zoom(by: event.hasPreciseScrollingDeltas ? raw / 10 : raw, at: event)
+    }
+
+    /// Trackpad pinch.
+    override func magnify(with event: NSEvent) {
+        zoom(by: log(max(1 + event.magnification, 0.01)) * 10, at: event)
+    }
+
+    private func zoom(by steps: CGFloat, at event: NSEvent) {
+        guard steps != 0, let points = pointSize else { return }
+        mouse = convert(event.locationInWindow, from: nil)
+        let fit = ZoomGeometry.fitScale(imageSize: points, viewSize: bounds.size)
+        onZoom?(ZoomGeometry.scale(after: steps, from: zoomScale, fit: fit))
+    }
+
+    /// The 100% size in points.
+    private var pointSize: CGSize? {
+        guard let pixels = pixelSize else { return nil }
+        return ZoomGeometry.pointSize(
+            pixelWidth: Int(pixels.width), pixelHeight: Int(pixels.height), scale: window?.backingScaleFactor ?? 2)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -79,13 +110,13 @@ final class ViewerNSView: NSView {
     private func applyGeometry() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if isZoomed, let full = zoomImage {
-            imageLayer.contents = full
+        if let scale = zoomScale, let points = pointSize, let shown = zoomImage ?? image {
+            // Until the full-resolution image arrives, the display image stands in at the zoomed size.
+            imageLayer.contents = shown
             imageLayer.contentsGravity = .resize
-            let size = ZoomGeometry.pointSize(
-                pixelWidth: full.width, pixelHeight: full.height, scale: window?.backingScaleFactor ?? 2)
             imageLayer.frame = ZoomGeometry.frame(
-                imageSize: size, viewSize: bounds.size, mouse: mouse ?? CGPoint(x: bounds.midX, y: bounds.midY))
+                imageSize: points, scale: scale, viewSize: bounds.size,
+                mouse: mouse ?? CGPoint(x: bounds.midX, y: bounds.midY))
         } else {
             imageLayer.contents = image
             imageLayer.contentsGravity = .resizeAspect
@@ -99,7 +130,9 @@ final class ViewerNSView: NSView {
 struct ViewerRepresentable: NSViewRepresentable {
     let image: CGImage?
     var zoomImage: CGImage?
-    var isZoomed = false
+    var zoomScale: CGFloat?
+    var pixelSize: CGSize?
+    var onZoom: ((CGFloat?) -> Void)?
     let dimmed: Bool
     let onKey: (NSEvent) -> Bool
 
@@ -113,7 +146,9 @@ struct ViewerRepresentable: NSViewRepresentable {
         view.onKey = onKey
         if view.image !== image { view.image = image }
         if view.zoomImage !== zoomImage { view.zoomImage = zoomImage }
-        if view.isZoomed != isZoomed { view.isZoomed = isZoomed }
+        view.onZoom = onZoom
+        view.pixelSize = pixelSize
+        if view.zoomScale != zoomScale { view.zoomScale = zoomScale }
         if view.dimmed != dimmed { view.dimmed = dimmed }
     }
 }

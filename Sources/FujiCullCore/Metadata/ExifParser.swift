@@ -34,6 +34,17 @@ public struct CaptureTime: Hashable, Sendable, Codable {
     }
 }
 
+/// Pixel dimensions as stored in the file, before EXIF orientation is applied.
+public struct PixelSize: Hashable, Sendable, Codable {
+    public let width: Int
+    public let height: Int
+
+    public init(width: Int, height: Int) {
+        self.width = width
+        self.height = height
+    }
+}
+
 /// What FujiCull needs from a JPEG's EXIF (DESIGN §5.4 T0, §5.6). Every field is optional except
 /// orientation, which defaults to 1 (upright) when absent or invalid.
 public struct ExifSummary: Hashable, Sendable {
@@ -43,10 +54,18 @@ public struct ExifSummary: Hashable, Sendable {
     public var iso: Int?
     public var focalLength: Double?
     public var captureTime: CaptureTime?
+    /// PixelXDimension × PixelYDimension, as stored. Lets zoom be sized before the full image has loaded.
+    public var pixelSize: PixelSize?
     /// Byte range of the embedded IFD1 JPEG thumbnail within the data that was parsed.
     public var thumbnail: Range<Int>?
 
     public init() {}
+
+    /// The size as seen: width and height swap for orientations 5–8 (rotated a quarter turn).
+    public var uprightPixelSize: PixelSize? {
+        guard let pixelSize else { return nil }
+        return orientation >= 5 ? PixelSize(width: pixelSize.height, height: pixelSize.width) : pixelSize
+    }
 }
 
 public enum ExifParseResult: Equatable, Sendable {
@@ -119,6 +138,8 @@ private struct TIFFReader {
         static let dateTimeOriginal: UInt16 = 0x9003
         static let subSecTimeOriginal: UInt16 = 0x9291
         static let focalLength: UInt16 = 0x920A
+        static let pixelXDimension: UInt16 = 0xA002
+        static let pixelYDimension: UInt16 = 0xA003
     }
 
     private struct Entry {
@@ -156,6 +177,11 @@ private struct TIFFReader {
             summary.fNumber = reader.rational(exif[Tag.fNumber])?.value
             summary.iso = reader.unsigned(exif[Tag.iso])
             summary.focalLength = reader.rational(exif[Tag.focalLength])?.value
+            if let width = reader.unsigned(exif[Tag.pixelXDimension]),
+                let height = reader.unsigned(exif[Tag.pixelYDimension]), width > 0, height > 0
+            {
+                summary.pixelSize = PixelSize(width: width, height: height)
+            }
             if let dateTime = reader.ascii(exif[Tag.dateTimeOriginal]), !dateTime.isEmpty {
                 let subsecond = reader.ascii(exif[Tag.subSecTimeOriginal]).flatMap { $0.isEmpty ? nil : $0 }
                 summary.captureTime = CaptureTime(dateTime: dateTime, subsecond: subsecond)

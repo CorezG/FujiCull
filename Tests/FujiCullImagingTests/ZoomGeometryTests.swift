@@ -41,6 +41,42 @@ import Testing
         #expect(frame.minX == 0 && frame.maxY == 600)
     }
 
+    @Test func atHalfZoomThePhotoIsHalfItsFullSize() {
+        let frame = ZoomGeometry.frame(imageSize: image, scale: 0.5, viewSize: view, mouse: CGPoint(x: 500, y: 300))
+
+        #expect(frame.size == CGSize(width: 1368, height: 912))
+        #expect(frame.midX == 500 && frame.midY == 300)
+    }
+
+    @Test func fitScaleIsTheLargestScaleThatShowsTheWholePhoto() {
+        #expect(ZoomGeometry.fitScale(imageSize: image, viewSize: view) == CGFloat(600) / 1824)
+        #expect(ZoomGeometry.fitScale(imageSize: CGSize(width: 400, height: 300), viewSize: view) == 1)
+    }
+
+    @Test func scrollingUpZoomsInAndDownZoomsOut() throws {
+        let fit = 0.3
+        let zoomedIn = try #require(ZoomGeometry.scale(after: 5, from: nil, fit: fit))
+        let zoomedOut = try #require(ZoomGeometry.scale(after: -2, from: zoomedIn, fit: fit))
+
+        #expect(zoomedIn > fit)
+        #expect(zoomedOut < zoomedIn)
+    }
+
+    @Test func zoomingOutToFitReturnsToFitMode() {
+        #expect(ZoomGeometry.scale(after: -50, from: 0.5, fit: 0.3) == nil)
+    }
+
+    @Test func zoomStopsAtTwoHundredPercent() {
+        #expect(ZoomGeometry.scale(after: 500, from: 1.9, fit: 0.3) == ZoomGeometry.maxScale)
+        #expect(ZoomGeometry.maxScale == 2)
+    }
+
+    @Test func aPhotoSmallerThanTheViewCanStillBeZoomedFromFullSize() throws {
+        // Fit scale is capped at 100%, so zooming in starts from 100%.
+        let zoomed = try #require(ZoomGeometry.scale(after: 5, from: nil, fit: 1))
+        #expect(zoomed > 1)
+    }
+
     @Test func pointSizeIsPixelsDividedByTheScreenScale() {
         #expect(ZoomGeometry.pointSize(pixelWidth: 5472, pixelHeight: 3648, scale: 2) == image)
     }

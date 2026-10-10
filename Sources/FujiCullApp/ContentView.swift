@@ -100,12 +100,13 @@ struct BrowseView: View {
     private var viewer: some View {
         ZStack(alignment: .bottom) {
             ViewerRepresentable(
-                image: model.currentImage, zoomImage: model.zoomImage, isZoomed: model.isZoomed,
+                image: model.currentImage, zoomImage: model.zoomImage, zoomScale: model.zoomScale,
+                pixelSize: model.currentPixelSize, onZoom: { model.setZoom($0) },
                 dimmed: model.currentMark.decision == .reject, onKey: handle)
             if let frame = model.currentFrame {
                 StatusBar(
                     frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position,
-                    zoom: model.isZoomed ? (model.zoomImage == nil ? "100%…" : "100%") : nil
+                    zoom: model.zoomScale.map { "\(Int(($0 * 100).rounded()))%" + (model.zoomImage == nil ? "…" : "") }
                 )
                 .padding(14)
             } else if model.session.undecidedOnly && !model.frames.isEmpty {
@@ -141,7 +142,7 @@ private struct StatusBar: View {
     let mark: FrameMark
     let counts: CullCounts
     let position: (index: Int, count: Int)
-    /// "100%" while zoomed, "100%…" while the full-resolution image loads.
+    /// The zoom level while zoomed, e.g. "100%", with "…" while the full-resolution image loads.
     var zoom: String?
 
     var body: some View {

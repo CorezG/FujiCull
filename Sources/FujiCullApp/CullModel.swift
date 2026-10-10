@@ -29,7 +29,10 @@ final class CullModel {
     /// Decisions, cursor, filter and undo (DESIGN §5.2).
     private(set) var session = CullSession(frameIDs: [])
     /// View toggles owned by the app (REQUIREMENTS §4.3): zoom (T12), grid (T11), EXIF line (T13).
-    private(set) var isZoomed = false
+    /// nil = fit; 1 = 100% (one image pixel per screen pixel); up to `ZoomGeometry.maxScale` (R12, D5).
+    /// Persists across frames so focus can be compared.
+    private(set) var zoomScale: CGFloat?
+    var isZoomed: Bool { zoomScale != nil }
     private(set) var isGrid = false
     private(set) var showsExif = true
     /// Brief confirmation after a decision; `id` changes every time so the view can re-trigger it.
@@ -187,7 +190,7 @@ final class CullModel {
         pendingResume = nil
         frames = []
         session = CullSession(frameIDs: [])
-        isZoomed = false
+        zoomScale = nil
         isGrid = false
         flash = nil
         currentImage = nil
@@ -279,19 +282,34 @@ final class CullModel {
                 isGrid = false
                 showCurrent()
             case .toggleZoom:
-                isZoomed.toggle()
-                if isZoomed {
-                    showCurrent()
-                } else {
-                    zoomImage = nil
-                    fullCache.removeAll()
-                }
+                setZoom(isZoomed ? nil : 1)
             case .toggleGrid:
                 isGrid.toggle()
                 if !isGrid { showCurrent() }
             default: showsExif.toggle()
             }
         }
+    }
+
+    /// Sets the zoom from Return, the scroll wheel or a pinch. Full-resolution images load only while zoomed
+    /// and are freed when it returns to fit.
+    func setZoom(_ scale: CGFloat?) {
+        guard phase == .browsing, !isGrid, scale == nil || currentFrame?.jpg != nil else { return }
+        let wasZoomed = isZoomed
+        zoomScale = scale
+        if scale == nil {
+            zoomImage = nil
+            fullCache.removeAll()
+        } else if !wasZoomed {
+            showCurrent()
+        }
+    }
+
+    /// The current frame's upright size in pixels, from EXIF, so zoom can be sized before the full image loads.
+    var currentPixelSize: CGSize? {
+        if let zoomImage { return CGSize(width: zoomImage.width, height: zoomImage.height) }
+        guard let frame = currentFrame, let size = headers[frame.id]?.exif.uprightPixelSize else { return nil }
+        return CGSize(width: size.width, height: size.height)
     }
 
     func canPerform(_ action: KeyAction) -> Bool {

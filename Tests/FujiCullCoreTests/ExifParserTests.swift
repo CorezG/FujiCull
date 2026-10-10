@@ -29,6 +29,15 @@ enum Fixture {
         #expect(summary.captureTime == CaptureTime(dateTime: "2026:09:20 05:08:41", subsecond: "82"))
     }
 
+    @Test func readsTheFullPixelSizeSoZoomCanBeSizedBeforeTheImageLoads() throws {
+        let landscape = try #require(ExifParser.parse(jpegHead: try Fixture.data("DSCF3404-head64k.JPG")).summary)
+        let portrait = try #require(ExifParser.parse(jpegHead: try Fixture.data("DSCF3406-head64k.JPG")).summary)
+
+        #expect(landscape.pixelSize == PixelSize(width: 5472, height: 3648))
+        #expect(portrait.pixelSize == PixelSize(width: 5472, height: 3648), "as stored, before orientation")
+        #expect(portrait.uprightPixelSize == PixelSize(width: 3648, height: 5472))
+    }
+
     @Test func readsOrientationSixFromAPortraitXT50Header() throws {
         let summary = try #require(ExifParser.parse(jpegHead: try Fixture.data("DSCF3406-head64k.JPG")).summary)
 
