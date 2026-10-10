@@ -65,6 +65,9 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 | ⌫ Delete | Undo last action |
 | G | Toggle grid / single-image view |
 | I | Toggle EXIF info line |
+| Esc | Leave zoom, back to the whole photo _(added 2026-10-09)_ |
+| Scroll wheel / pinch | Zoom in or out about the point under the mouse, fit to 200% _(added 2026-10-09)_ |
+| Double-click (grid) | Open the frame in the single view, like Return _(added 2026-10-09)_ |
 
 - R11. Auto-advance after ↑/↓ is on by default (preference to turn it off).
 - R12. At 100% zoom, the zoom centre follows the mouse; arrow keys still navigate frames (zoom level persists across frames so I can compare focus).
