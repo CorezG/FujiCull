@@ -9,6 +9,16 @@ public struct FrameID: Hashable, Comparable, Sendable, Codable, CustomStringConv
 
     public var description: String { rawValue }
 
+    // Stored as a plain string in session and ledger files.
+    public init(from decoder: Decoder) throws {
+        rawValue = try decoder.singleValueContainer().decode(String.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
     public static func < (lhs: FrameID, rhs: FrameID) -> Bool {
         NaturalSortKey(lhs.rawValue) < NaturalSortKey(rhs.rawValue)
     }

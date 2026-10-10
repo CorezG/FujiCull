@@ -17,13 +17,20 @@ public struct CullSession: Equatable, Sendable {
     private var marks: [FrameID: FrameMark] = [:]
     private var undoStack: [(frame: Int, previous: FrameMark)] = []
 
-    public init(frameIDs: [FrameID], marks: [FrameID: FrameMark] = [:], autoAdvance: Bool = true) {
+    /// `cursor` and `undecidedOnly` restore a saved position; an unknown cursor starts at the first frame.
+    public init(
+        frameIDs: [FrameID], marks: [FrameID: FrameMark] = [:], autoAdvance: Bool = true, cursor: FrameID? = nil,
+        undecidedOnly: Bool = false
+    ) {
         self.frameIDs = frameIDs
         self.autoAdvance = autoAdvance
         self.counts = CullCounts(keep: 0, reject: 0, undecided: frameIDs.count, favourite: 0)
         for id in frameIDs {
             if let mark = marks[id]?.normalised, mark != FrameMark() { setMark(mark, for: id) }
         }
+        if let cursor, let index = frameIDs.firstIndex(of: cursor) { self.cursor = index }
+        self.undecidedOnly = undecidedOnly
+        if !frameIDs.isEmpty { settleCursor(from: self.cursor) }
     }
 
     public static func == (lhs: CullSession, rhs: CullSession) -> Bool {
