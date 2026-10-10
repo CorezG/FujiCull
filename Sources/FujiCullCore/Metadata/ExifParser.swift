@@ -56,6 +56,8 @@ public struct ExifSummary: Hashable, Sendable {
     public var captureTime: CaptureTime?
     /// PixelXDimension × PixelYDimension, as stored. Lets zoom be sized before the full image has loaded.
     public var pixelSize: PixelSize?
+    /// The Fuji film simulation's name, e.g. "Classic Chrome"; nil if unknown or not a Fuji file.
+    public var filmSimulation: String?
     /// Byte range of the embedded IFD1 JPEG thumbnail within the data that was parsed.
     public var thumbnail: Range<Int>?
 
@@ -140,6 +142,7 @@ private struct TIFFReader {
         static let focalLength: UInt16 = 0x920A
         static let pixelXDimension: UInt16 = 0xA002
         static let pixelYDimension: UInt16 = 0xA003
+        static let makerNote: UInt16 = 0x927C
     }
 
     private struct Entry {
@@ -181,6 +184,10 @@ private struct TIFFReader {
                 let height = reader.unsigned(exif[Tag.pixelYDimension]), width > 0, height > 0
             {
                 summary.pixelSize = PixelSize(width: width, height: height)
+            }
+            if let note = reader.undefined(exif[Tag.makerNote]), let values = FujiMakerNote.read(note) {
+                summary.filmSimulation = FujiMakerNote.filmSimulation(
+                    filmMode: values.filmMode, saturation: values.saturation)
             }
             if let dateTime = reader.ascii(exif[Tag.dateTimeOriginal]), !dateTime.isEmpty {
                 let subsecond = reader.ascii(exif[Tag.subSecTimeOriginal]).flatMap { $0.isEmpty ? nil : $0 }
@@ -241,6 +248,14 @@ private struct TIFFReader {
             let numerator = u32(at), let denominator = u32(at + 4)
         else { return nil }
         return Rational(UInt32(numerator), UInt32(denominator))
+    }
+
+    /// UNDEFINED (7): raw bytes, e.g. the MakerNote.
+    private func undefined(_ entry: Entry?) -> Data? {
+        guard let entry, entry.type == 7, entry.count >= 1, let at = valueOffset(entry, unitSize: 1), at >= 0,
+            start + at + entry.count <= end
+        else { return nil }
+        return Data(bytes[(start + at)..<(start + at + entry.count)])
     }
 
     /// ASCII (2), trimmed of NULs and surrounding spaces.
