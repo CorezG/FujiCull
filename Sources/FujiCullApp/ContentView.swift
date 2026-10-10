@@ -100,10 +100,14 @@ struct BrowseView: View {
     private var viewer: some View {
         ZStack(alignment: .bottom) {
             ViewerRepresentable(
-                image: model.currentImage, dimmed: model.currentMark.decision == .reject, onKey: handle)
+                image: model.currentImage, zoomImage: model.zoomImage, isZoomed: model.isZoomed,
+                dimmed: model.currentMark.decision == .reject, onKey: handle)
             if let frame = model.currentFrame {
-                StatusBar(frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position)
-                    .padding(14)
+                StatusBar(
+                    frame: frame, mark: model.currentMark, counts: model.session.counts, position: model.position,
+                    zoom: model.isZoomed ? (model.zoomImage == nil ? "100%…" : "100%") : nil
+                )
+                .padding(14)
             } else if model.session.undecidedOnly && !model.frames.isEmpty {
                 EmptyFilterMessage()
             } else {
@@ -137,11 +141,14 @@ private struct StatusBar: View {
     let mark: FrameMark
     let counts: CullCounts
     let position: (index: Int, count: Int)
+    /// "100%" while zoomed, "100%…" while the full-resolution image loads.
+    var zoom: String?
 
     var body: some View {
         HStack(spacing: 10) {
             Text(BrowseView.filename(of: frame)).font(.system(size: 12, design: .monospaced))
             DecisionChip(mark: mark)
+            if let zoom { Text(zoom).foregroundStyle(Color.accentColor) }
             if frame.isUnpaired {
                 Text(frame.jpg == nil ? "RAF only" : "JPG only")
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(.yellow)

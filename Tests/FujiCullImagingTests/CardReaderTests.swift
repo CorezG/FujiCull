@@ -254,6 +254,14 @@ private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async 
         #expect(image.width == 400 && image.height == 300)
     }
 
+    @Test func fullDecodeKeepsEveryPixelAndAppliesOrientation() throws {
+        let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: 6)
+
+        let image = try PreviewPipeline.decodeFull(jpeg)
+
+        #expect(image.width == 800 && image.height == 1200)
+    }
+
     @Test func rejectsDataThatIsNotAnImage() {
         #expect(throws: PreviewPipeline.DecodeError.self) {
             try PreviewPipeline.decodeDisplay(Data("not a jpeg".utf8), maxPixelSize: 300)

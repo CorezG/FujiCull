@@ -13,6 +13,17 @@ public enum PreviewPipeline {
         try decodeDisplay(Data(contentsOf: url), maxPixelSize: maxPixelSize)
     }
 
+    /// Reads the whole file and decodes every pixel, upright: T2, for 100% zoom only (DESIGN §5.4).
+    /// About 45 ms to decode at size M on the M2 (spike S4). Blocking: call it through `CardReader`.
+    public static func loadFull(_ url: URL) throws -> CGImage {
+        try decodeFull(Data(contentsOf: url))
+    }
+
+    /// Decodes every pixel of `jpeg`, upright.
+    public static func decodeFull(_ jpeg: Data) throws -> CGImage {
+        try decodeDisplay(jpeg, maxPixelSize: Int.max)
+    }
+
     /// Decodes `jpeg` upright (EXIF orientation applied) with its long edge at most `maxPixelSize`.
     /// Never upscales.
     public static func decodeDisplay(_ jpeg: Data, maxPixelSize: Int) throws -> CGImage {

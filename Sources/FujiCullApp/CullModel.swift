@@ -19,6 +19,7 @@ final class CullModel {
     private enum Tier: String {
         case thumbnail = "t0"
         case display = "t1"
+        case full = "t2"
     }
 
     private(set) var phase: Phase = .start
@@ -36,6 +37,8 @@ final class CullModel {
     /// The best image available for the current frame: the T1 display image, or its T0 thumbnail meanwhile.
     private(set) var currentImage: CGImage?
     private(set) var currentIsDisplayQuality = false
+    /// The current frame at full resolution, while zoomed to 100% (R12).
+    private(set) var zoomImage: CGImage?
     /// Bumped (at most every 100 ms) as the background pass brings in thumbnails, so the filmstrip refreshes.
     private(set) var thumbnailRevision = 0
 
@@ -50,6 +53,8 @@ final class CullModel {
     /// About five 2560 px frames (DESIGN §5.4 memory budget).
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 100_000_000)
     @ObservationIgnored private var thumbnailCache = PreviewCache<FrameID, CGImage>(byteBudget: 30_000_000)
+    /// T2 for the current and next frame only, while zoomed: 80 MB each at size M (DESIGN §5.4).
+    @ObservationIgnored private var fullCache = PreviewCache<FrameID, CGImage>(byteBudget: 340_000_000)
     @ObservationIgnored private var inFlight: Set<String> = []
     /// Every frame's T0 once read: the thumbnail still compressed (~9 KB) plus EXIF (DESIGN §5.4).
     @ObservationIgnored private var headers: [FrameID: ThumbnailHeader] = [:]
@@ -187,6 +192,8 @@ final class CullModel {
         flash = nil
         currentImage = nil
         currentIsDisplayQuality = false
+        zoomImage = nil
+        fullCache.removeAll()
         displayCache.removeAll()
         thumbnailCache.removeAll()
         metadataTask?.cancel()
@@ -271,7 +278,14 @@ final class CullModel {
             case .toggleZoom where isGrid:
                 isGrid = false
                 showCurrent()
-            case .toggleZoom: isZoomed.toggle()
+            case .toggleZoom:
+                isZoomed.toggle()
+                if isZoomed {
+                    showCurrent()
+                } else {
+                    zoomImage = nil
+                    fullCache.removeAll()
+                }
             case .toggleGrid:
                 isGrid.toggle()
                 if !isGrid { showCurrent() }
@@ -286,8 +300,8 @@ final class CullModel {
         case .cull(.undo): return session.canUndo
         case .cull: return !frames.isEmpty
         case .toggleGrid: return !frames.isEmpty
-        // Return opens a frame from the grid now; 100% zoom itself arrives in T12, the EXIF line in T13.
-        case .toggleZoom: return isGrid
+        // Return opens the selected frame from the grid; in the single view it zooms a frame that has a JPG.
+        case .toggleZoom: return isGrid || currentFrame?.jpg != nil
         case .toggleExif: return false
         }
     }
@@ -307,8 +321,10 @@ final class CullModel {
     private func showCurrent() {
         guard let frame = currentFrame else {
             currentImage = nil
+            zoomImage = nil
             return
         }
+        zoomImage = isZoomed ? fullCache.value(for: frame.id) : nil
         if let image = displayCache.value(for: frame.id) {
             currentImage = image
             currentIsDisplayQuality = true
@@ -323,7 +339,11 @@ final class CullModel {
         let window = PrefetchWindow.requests(cursor: position, count: visible.count).map {
             (index: visible[$0.index], priority: $0.priority)
         }
-        let keep = Set(window.flatMap { [key(.thumbnail, frames[$0.index].id), key(.display, frames[$0.index].id)] })
+        // While zoomed, also the full-resolution current frame and the next one (R12: zoom persists across frames).
+        let zoomWindow = isZoomed ? Array(window.prefix(2)) : []
+        let keep = Set(
+            window.flatMap { [key(.thumbnail, frames[$0.index].id), key(.display, frames[$0.index].id)] }
+                + zoomWindow.map { key(.full, frames[$0.index].id) })
         let reader = reader
         // Only the viewer's own window is cancelled; filmstrip thumbnails and the background pass carry on.
         Task { await reader.cancelPending(except: keep, upTo: .behind1) }
@@ -334,6 +354,8 @@ final class CullModel {
         }
         // The grid shows thumbnails only, so it doesn't read whole JPGs from the card.
         guard !isGrid else { return }
+        // Zoomed: the full-resolution frame first, so 100% appears as soon as possible.
+        for item in zoomWindow { requestFull(index: item.index, priority: item.priority) }
         for item in window { requestDisplay(index: item.index, priority: item.priority) }
     }
 
@@ -363,6 +385,31 @@ final class CullModel {
                 }
             } catch {
                 // Cancelled because the cursor moved on, or unreadable. Either way, let a later visit retry.
+                if generation == self.generation { inFlight.remove(key) }
+            }
+        }
+    }
+
+    /// T2: every pixel, only while zoomed (DESIGN §5.4).
+    private func requestFull(index: Int, priority: ReadPriority) {
+        let frame = frames[index]
+        let key = key(.full, frame.id)
+        guard fullCache.value(for: frame.id) == nil, !inFlight.contains(key), let jpg = frame.jpg,
+            let base = identityBase
+        else { return }
+        inFlight.insert(key)
+        let url = base.appendingPathComponent(jpg.relativePath)
+        let generation = generation
+        let reader = reader
+        Task {
+            do {
+                let image = try await reader.submit(key: key, priority: priority) { try PreviewPipeline.loadFull(url) }
+                guard generation == self.generation else { return }
+                inFlight.remove(key)
+                guard isZoomed else { return }
+                fullCache.insert(image, for: frame.id, cost: image.bytesPerRow * image.height)
+                if currentFrame?.id == frame.id { zoomImage = image }
+            } catch {
                 if generation == self.generation { inFlight.remove(key) }
             }
         }
