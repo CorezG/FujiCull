@@ -32,3 +32,4 @@ The interaction is keyboard-first: arrow keys with auto-repeat, single unmodifie
 ## Consequences
 - There is a thin bridging layer to maintain.
 - Every interaction rule lives in Core or `CullModel`, so the UI framework doesn't affect testability.
+- **Spike S5 result (2026-10-09, T8):** every key is both a SwiftUI menu shortcut (including unmodified arrows, `/`, `.`, `'`, ⌫, Return) and handled in `ViewerNSView.keyDown`. Both routes call `CullModel.perform`, and the owner confirmed on the real card that **each key fires exactly once**, and that holding → still repeats. A key consumed as a menu shortcut never reaches `keyDown`, so there's no double dispatch. Culling menu items must be disabled while a text field is focused (the Apply sheet, T21), so `/`, `.` and the arrows can be typed there.

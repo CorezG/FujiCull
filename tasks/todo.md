@@ -98,12 +98,12 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullCore/Session/{CullSession,Decision,Command}.swift`, `Tests/FujiCullCoreTests/CullSessionTests.swift`
 **Scope:** M
 
-### - [ ] T8: KeyMap, AppCommand, menus and overlay counts (R11, R13, R16) + spike S5
+### - [x] T8: KeyMap, AppCommand, menus and overlay counts (R11, R13, R16) + spike S5
 **Description:** `KeyMap` maps `(keyCode, modifiers)` to `AppCommand`. All keys and menu items go through `CullModel.perform`. Menus list every action with its shortcut. The overlay shows the filename, state, progress and the kept/rejected/undecided counts. Spike S5 decides where unmodified keys are handled so each fires exactly once.
 **Acceptance:**
-- [ ] Every key in §4.3 works, including holding a key down (repeat), and none fires twice.
-- [ ] Every action is reachable from the menu bar.
-- [ ] The S5 outcome is noted in ADR-006.
+- [x] Every key in §4.3 works, including holding a key down (repeat), and none fires twice.
+- [x] Every action is reachable from the menu bar.
+- [x] The S5 outcome is noted in ADR-006.
 **Verify:** `make test` (KeyMap table test) + manual run through the keymap
 **Depends on:** T6, T7
 **Files:** `Sources/FujiCullApp/{KeyMap,AppCommand,AppMenus}.swift`, `Sources/FujiCullApp/Viewer/OverlayView.swift`, `CullModel.swift`
