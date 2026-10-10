@@ -27,10 +27,13 @@ final class FaultyFileSystem: FileSystem {
 
     private let base = LocalFileSystem()
     private let faults: [Fault]
+    /// When set, the volume reports this much free space instead of the real figure.
+    let freeBytes: Int64?
     private let state = OSAllocatedUnfairLock(initialState: State())
 
-    init(_ faults: Fault...) {
+    init(_ faults: Fault..., freeBytes: Int64? = nil) {
         self.faults = faults
+        self.freeBytes = freeBytes
     }
 
     /// How many times `operation` has been called.
@@ -140,5 +143,50 @@ final class FaultyFileSystem: FileSystem {
         let call = try enter(.remove, name)
         try base.remove(name, in: folder)
         leave(.remove, call)
+    }
+
+    func createFolder(_ name: String, in folder: OpenFolder) throws(FileSystemError) {
+        let call = try enter(.createFolder, name)
+        try base.createFolder(name, in: folder)
+        leave(.createFolder, call)
+    }
+
+    func names(in folder: OpenFolder) throws(FileSystemError) -> [String] {
+        let call = try enter(.list, folder.path)
+        let result = try base.names(in: folder)
+        leave(.list, call)
+        return result
+    }
+
+    func volumeSpace(of folder: OpenFolder) throws(FileSystemError) -> VolumeSpace {
+        let call = try enter(.volumeSpace, folder.path)
+        var result = try base.volumeSpace(of: folder)
+        if let freeBytes { result = VolumeSpace(freeBytes: freeBytes, allocationSize: 4096) }
+        leave(.volumeSpace, call)
+        return result
+    }
+
+    func tags(of name: String, in folder: OpenFolder) throws(FileSystemError) -> Set<String> {
+        let call = try enter(.readTags, name)
+        let result = try base.tags(of: name, in: folder)
+        leave(.readTags, call)
+        return result
+    }
+
+    func setTags(_ tags: Set<String>, of name: String, in folder: OpenFolder) throws(FileSystemError) {
+        let call = try enter(.writeTags, name)
+        try base.setTags(tags, of: name, in: folder)
+        leave(.writeTags, call)
+    }
+
+    /// A stand-in Trash: the file moves into `.TestTrash` inside its own folder, under a name that never
+    /// collides. The real Trash is the user's; tests don't put files in it.
+    func moveToTrash(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> String? {
+        let call = try enter(.trash, name)
+        if try base.entry(".TestTrash", in: folder) == nil { try base.createFolder(".TestTrash", in: folder) }
+        let trashed = ".TestTrash/\(name) \(call)"
+        try base.rename(name, to: trashed, in: folder)
+        leave(.trash, call)
+        return folder.path + "/" + trashed
     }
 }

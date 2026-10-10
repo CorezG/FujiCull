@@ -14,6 +14,12 @@ public enum FileOperation: String, Sendable, CaseIterable {
     case setModified
     case rename
     case remove
+    case createFolder
+    case list
+    case volumeSpace
+    case readTags
+    case writeTags
+    case trash
 }
 
 /// A failed file-system call: what was attempted, on which name, and the `errno` it gave.
@@ -112,4 +118,32 @@ public protocol FileSystem: Sendable {
 
     /// Permanently removes a file.
     func remove(_ name: String, in folder: OpenFolder) throws(FileSystemError)
+
+    /// Creates a folder, failing with `alreadyExists` if the volume already has that name (SR10).
+    func createFolder(_ name: String, in folder: OpenFolder) throws(FileSystemError)
+
+    /// Every name in the folder, as stored, including hidden ones.
+    func names(in folder: OpenFolder) throws(FileSystemError) -> [String]
+
+    /// Free space on the folder's volume and the size of one allocation unit (SR14).
+    func volumeSpace(of folder: OpenFolder) throws(FileSystemError) -> VolumeSpace
+
+    /// The file's Finder tags.
+    func tags(of name: String, in folder: OpenFolder) throws(FileSystemError) -> Set<String>
+
+    func setTags(_ tags: Set<String>, of name: String, in folder: OpenFolder) throws(FileSystemError)
+
+    /// Moves a file to its own volume's Trash and returns where it went, if known. It is never deleted
+    /// instead: if the move fails, this throws and the file stays (SR18).
+    func moveToTrash(_ name: String, in folder: OpenFolder) throws(FileSystemError) -> String?
+}
+
+public struct VolumeSpace: Equatable, Sendable {
+    public let freeBytes: Int64
+    public let allocationSize: Int64
+
+    public init(freeBytes: Int64, allocationSize: Int64) {
+        self.freeBytes = freeBytes
+        self.allocationSize = allocationSize
+    }
 }

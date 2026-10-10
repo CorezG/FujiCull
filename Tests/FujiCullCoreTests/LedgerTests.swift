@@ -276,7 +276,11 @@ private func verified(_ location: ArchiveLocation, by owner: Owner = frame1, as 
         let whole = try Data(contentsOf: url)
         let old = whole.prefix(try #require(whole.firstIndex(of: UInt8(ascii: "\n"))) + 1)
 
-        for cut in old.count..<(whole.count - 1) {
+        // Every cut point near the start and the end of the record, and every seventh one between. Each
+        // repair is a forced sync, so trying all of them would slow every other test's disk access.
+        let last = whole.count - 2
+        let cuts = (old.count...last).filter { $0 < old.count + 12 || $0 > last - 12 || ($0 - old.count) % 7 == 0 }
+        for cut in cuts {
             try whole.prefix(cut).write(to: url)
 
             let records = try load()

@@ -209,4 +209,127 @@ import Testing
 
         expectError(.remove, code: ENOENT) { try fs.remove("nope", in: folder) }
     }
+
+    // MARK: Folders, listings, space
+
+    @Test func aFolderIsCreatedOnceAndRefusedTheSecondTime() throws {
+        let tree = try TempTree()
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        try fs.createFolder("Japan 2026", in: folder)
+
+        #expect(try fs.entry("Japan 2026", in: folder)?.isRegularFile == false)
+        do {
+            try fs.createFolder("japan 2026", in: folder)
+            Issue.record("the volume ignores case, so this is the same name")
+        } catch {
+            #expect(error.alreadyExists)
+        }
+    }
+
+    @Test func aListingHasEveryNameIncludingHiddenOnes() throws {
+        let tree = try TempTree()
+        try tree.file("DSCF0001.JPG")
+        try tree.file(".DSCF0002.JPG.fujicull-partial")
+        try tree.file("Google Photos/DSCF0001.JPG")
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        #expect(
+            try fs.names(in: folder).sorted() == [".DSCF0002.JPG.fujicull-partial", "DSCF0001.JPG", "Google Photos"])
+        #expect(try fs.names(in: folder).count == 3, "listing twice gives the same answer")
+    }
+
+    @Test func aVolumeReportsItsFreeSpaceAndAllocationSize() throws {
+        let tree = try TempTree()
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        let space = try fs.volumeSpace(of: folder)
+
+        #expect(space.freeBytes > 0 && space.allocationSize >= 512)
+    }
+
+    // MARK: Tags and the Trash, which take a path (SR7)
+
+    @Test func tagsAreSetReadBackAndCleared() throws {
+        let tree = try TempTree()
+        try tree.file("DSCF0001.JPG")
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        #expect(try fs.tags(of: "DSCF0001.JPG", in: folder).isEmpty)
+        try fs.setTags(["Favourite", "Print"], of: "DSCF0001.JPG", in: folder)
+        #expect(try fs.tags(of: "DSCF0001.JPG", in: folder) == ["Favourite", "Print"])
+        try fs.setTags([], of: "DSCF0001.JPG", in: folder)
+        #expect(try fs.tags(of: "DSCF0001.JPG", in: folder).isEmpty)
+    }
+
+    @Test func taggingAMissingFileFails() throws {
+        let tree = try TempTree()
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        expectError(.writeTags, code: ENOENT) { try fs.setTags(["Favourite"], of: "nope.JPG", in: folder) }
+        expectError(.readTags, code: ENOENT) { _ = try fs.tags(of: "nope.JPG", in: folder) }
+    }
+
+    @Test func aTagThatCannotBeWrittenIsAnErrorNotASilentSkip() throws {
+        let tree = try TempTree()
+        let file = try tree.file("locked.JPG")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+        defer {
+            do {
+                try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            } catch {
+                Issue.record("could not unlock the test file: \(error)")
+            }
+        }
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        do {
+            try fs.setTags(["Favourite"], of: "locked.JPG", in: folder)
+            Issue.record("expected the tag write to fail")
+        } catch {
+            #expect(error.operation == .writeTags)
+        }
+    }
+
+    @Test func aFolderThatWasMovedIsStillTheOneThatGetsTagged() throws {
+        // The folder is renamed after it was opened. The path is taken from the open folder as it is now,
+        // so the tag lands on the right file and nothing is created at the old path.
+        let tree = try TempTree()
+        try tree.file("Japan/DSCF0001.JPG")
+        let folder = try fs.openFolder(at: tree.url("Japan").path)
+        try FileManager.default.moveItem(at: tree.url("Japan"), to: tree.url("Japan renamed"))
+
+        try fs.setTags(["Favourite"], of: "DSCF0001.JPG", in: folder)
+
+        let tags = try tree.url("Japan renamed/DSCF0001.JPG").resourceValues(forKeys: [.tagNamesKey]).tagNames
+        #expect(tags == ["Favourite"])
+        #expect(!FileManager.default.fileExists(atPath: tree.url("Japan").path))
+    }
+
+    @Test func movingToTheTrashTakesTheFileOutOfItsFolderWithoutDeletingIt() throws {
+        // The one test that uses the real Trash: a 5-byte file, removed from the Trash again afterwards.
+        let tree = try TempTree()
+        try tree.file("FujiCull-test-\(UUID().uuidString).JPG", bytes: 5)
+        let name = try #require(try FileManager.default.contentsOfDirectory(atPath: tree.root.path).first)
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        let trashed = try #require(try fs.moveToTrash(name, in: folder))
+        defer {
+            do { try FileManager.default.removeItem(atPath: trashed) } catch {
+                Issue.record("cleanup failed: \(error)")
+            }
+        }
+
+        #expect(try fs.entry(name, in: folder) == nil)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: trashed)).count == 5)
+    }
+
+    @Test func trashingAMissingFileFailsAndNothingElseIsTouched() throws {
+        let tree = try TempTree()
+        try tree.file("keep.JPG")
+        let folder = try fs.openFolder(at: tree.root.path)
+
+        expectError(.trash, code: ENOENT) { _ = try fs.moveToTrash("nope.JPG", in: folder) }
+        #expect(try fs.names(in: folder) == ["keep.JPG"])
+    }
 }
