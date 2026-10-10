@@ -98,8 +98,10 @@ final class ViewerNSView: NSView {
             pixelWidth: Int(pixels.width), pixelHeight: Int(pixels.height), scale: window?.backingScaleFactor ?? 2)
     }
 
+    /// A click while zoomed goes back to the whole photo, like Esc.
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if zoomScale != nil { onZoom?(nil) }
     }
 
     override func keyDown(with event: NSEvent) {

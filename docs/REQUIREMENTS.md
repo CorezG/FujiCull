@@ -66,6 +66,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 | G | Toggle grid / single-image view |
 | I | Toggle EXIF info line |
 | Esc | Leave zoom, back to the whole photo _(added 2026-10-09)_ |
+| Click on the photo while zoomed | Leave zoom, back to the whole photo _(added 2026-10-10)_ |
 | Scroll wheel / pinch | Zoom in or out about the point under the mouse, fit to 200% _(added 2026-10-09)_ |
 | Double-click (grid) | Open the frame in the single view, like Return _(added 2026-10-09)_ |
 
