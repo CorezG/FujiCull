@@ -226,23 +226,89 @@ private func snapshot(_ root: URL) throws -> [String: Int] {
     @Test func aCardIsKeyedByItsVolumeUUID() {
         // Fuji SD's real UUID, which stayed the same across a rename and a different reader (spike S3).
         let key = SessionKey.make(
-            volumeUUID: "DB8E88CF-4EEB-30E1-85B7-2D06B3D78E33", baseIsVolumeRoot: true,
+            volumeUUID: "DB8E88CF-4EEB-30E1-85B7-2D06B3D78E33", isCard: true, formatted: nil, capacity: nil,
             canonicalPath: "/Volumes/Fuji SD")
 
         #expect(key == "vol-DB8E88CF-4EEB-30E1-85B7-2D06B3D78E33")
     }
 
     @Test func theSameCardUnderADifferentNameKeepsItsKey() {
-        let before = SessionKey.make(volumeUUID: "DB8E88CF", baseIsVolumeRoot: true, canonicalPath: "/Volumes/Untitled")
-        let after = SessionKey.make(volumeUUID: "DB8E88CF", baseIsVolumeRoot: true, canonicalPath: "/Volumes/Fuji SD")
+        let before = SessionKey.make(
+            volumeUUID: "DB8E88CF", isCard: true, formatted: nil, capacity: nil, canonicalPath: "/Volumes/Untitled")
+        let after = SessionKey.make(
+            volumeUUID: "DB8E88CF", isCard: true, formatted: nil, capacity: nil, canonicalPath: "/Volumes/Fuji SD")
 
         #expect(before == after)
     }
 
-    @Test func aVolumeWithoutAUUIDFallsBackToItsPath() {
-        let key = SessionKey.make(volumeUUID: nil, baseIsVolumeRoot: true, canonicalPath: "/Volumes/Fuji SD")
+    @Test func aCardWithoutAVolumeIDIsKeyedByWhenItWasFormattedAndItsSize() throws {
+        // The X-T50 formats a small (FAT32) card without a volume serial, so macOS reports no UUID and every
+        // such card is called "NO NAME" (measured 2026-10-10). The format time and capacity tell them apart.
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        let formatted = try date(2026, 10, 11, 3, 55, 20, in: utc)
+
+        let key = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: formatted, capacity: 8_001_716_224,
+            canonicalPath: "/Volumes/NO NAME", timeZone: utc)
+
+        #expect(key == "card-8001716224-20261011T035520")
+    }
+
+    @Test func twoUnnamedCardsFormattedAtDifferentTimesGetDifferentKeys() throws {
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        let first = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: try date(2026, 10, 11, 3, 55, 20, in: utc),
+            capacity: 8_001_716_224, canonicalPath: "/Volumes/NO NAME", timeZone: utc)
+        let second = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: try date(2026, 10, 12, 9, 0, 0, in: utc),
+            capacity: 8_001_716_224, canonicalPath: "/Volumes/NO NAME", timeZone: utc)
+
+        #expect(first != second)
+    }
+
+    @Test func aCardKeyStaysTheSameWhenTheMacChangesTimeZone() throws {
+        // FAT stores local time without a zone, so the same card reads as a different instant after travel.
+        // The key uses the wall-clock digits, which don't move.
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))
+
+        let atHome = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: try date(2026, 10, 10, 23, 55, 20, in: newYork),
+            capacity: 8_001_716_224, canonicalPath: "/Volumes/NO NAME", timeZone: newYork)
+        let away = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: try date(2026, 10, 10, 23, 55, 20, in: tokyo),
+            capacity: 8_001_716_224, canonicalPath: "/Volumes/NO NAME", timeZone: tokyo)
+
+        #expect(atHome == away)
+    }
+
+    @Test func anAllZeroVolumeIDCountsAsNoID() throws {
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        let key = SessionKey.make(
+            volumeUUID: "00000000-0000-0000-0000-000000000000", isCard: true,
+            formatted: try date(2026, 10, 11, 3, 55, 20, in: utc), capacity: 8_001_716_224,
+            canonicalPath: "/Volumes/NO NAME", timeZone: utc)
+
+        #expect(key.hasPrefix("card-"))
+    }
+
+    @Test func aCardWithNeitherAnIDNorAFormatDateFallsBackToItsPath() {
+        let key = SessionKey.make(
+            volumeUUID: nil, isCard: true, formatted: nil, capacity: 8_001_716_224, canonicalPath: "/Volumes/NO NAME")
 
         #expect(key.hasPrefix("path-"))
+    }
+
+    @Test func aFolderThatIsNotACardIsKeyedByItsPathEvenOnADriveWithAnID() {
+        // Two trip folders on one USB drive must not share a session.
+        let a = SessionKey.make(
+            volumeUUID: "7CA26A15", isCard: false, formatted: nil, capacity: nil, canonicalPath: "/Volumes/Stick/Trip A"
+        )
+        let b = SessionKey.make(
+            volumeUUID: "7CA26A15", isCard: false, formatted: nil, capacity: nil, canonicalPath: "/Volumes/Stick/Trip B"
+        )
+
+        #expect(a.hasPrefix("path-") && b.hasPrefix("path-") && a != b)
     }
 
     @Test func keysAreSafeFilenames() throws {
@@ -251,4 +317,14 @@ private func snapshot(_ root: URL) throws -> [String: Int] {
 
         #expect(!key.contains("/") && !key.contains(":"))
     }
+}
+
+private func date(
+    _ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int, _ second: Int, in zone: TimeZone
+) throws -> Date {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = zone
+    return try #require(
+        calendar.date(
+            from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second)))
 }

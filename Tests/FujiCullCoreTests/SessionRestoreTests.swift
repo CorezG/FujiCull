@@ -80,6 +80,72 @@ private func frame(_ name: String, jpg: Int64? = 12, raf: Int64? = 87) -> Frame 
         #expect(restored.cursor == 1)
     }
 
+    // MARK: Capture time (SR2, review 3 finding 1)
+
+    @Test func eachSavedDecisionCarriesItsCaptureTime() {
+        let frames = [frame("DSCF0001"), frame("DSCF0002")]
+        var session = CullSession(frameIDs: frames.map(\.id))
+        session.apply(.keep)
+        session.apply(.reject)
+        let taken = CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: "42")
+
+        let file = SessionFile(
+            key: "k", rootHint: "", session: session, frames: frames, captureTimes: [frames[0].id: taken])
+
+        #expect(file.frames[0].captureTime == taken)
+        #expect(file.frames[1].captureTime == nil, "not read yet")
+    }
+
+    @Test func aDecisionBindsOnlyToAFrameTakenAtTheSameMoment() {
+        // Same path and same sizes after a format: only the capture time tells the photos apart.
+        let taken = CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: "42")
+        let stored = StoredFrame(
+            id: FrameID("DCIM/100_FUJI/DSCF0007"), jpgSize: nil, rafSize: 87_349_760, captureTime: taken,
+            mark: FrameMark(decision: .reject))
+
+        #expect(SessionRestore.binds(stored, to: taken, savedBySchema: 2))
+        #expect(
+            !SessionRestore.binds(
+                stored, to: CaptureTime(dateTime: "2026:10:10 17:55:01", subsecond: "42"), savedBySchema: 2))
+        #expect(
+            !SessionRestore.binds(
+                stored, to: CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: "43"), savedBySchema: 2))
+        #expect(!SessionRestore.binds(stored, to: nil, savedBySchema: 2), "a photo with no capture time never binds")
+    }
+
+    @Test func aDecisionSavedWithoutACaptureTimeDoesNotBind() {
+        let stored = StoredFrame(
+            id: FrameID("DCIM/100_FUJI/DSCF0007"), jpgSize: 12, rafSize: 87, captureTime: nil,
+            mark: FrameMark(decision: .keep))
+
+        #expect(
+            !SessionRestore.binds(
+                stored, to: CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: nil), savedBySchema: 2))
+    }
+
+    @Test func aSessionFromBeforeCaptureTimesWereSavedKeepsItsDecisions() throws {
+        // Version 1 files have no capture times at all. Their decisions are kept once, and the next save
+        // records the times.
+        let json = """
+            {"schemaVersion":1,"key":"vol-ABC","rootHint":"/Volumes/Fuji SD","undecidedOnly":false,
+             "frames":[{"id":"DCIM/124_FUJI/DSCF0001","jpgSize":12,"rafSize":87,
+                        "mark":{"decision":"keep","isFavourite":false}}]}
+            """
+        let file = try JSONDecoder().decode(SessionFile.self, from: Data(json.utf8))
+        let stored = try #require(file.frames.first)
+
+        #expect(stored.captureTime == nil)
+        #expect(
+            SessionRestore.binds(
+                stored, to: CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: nil),
+                savedBySchema: file.schemaVersion))
+        #expect(!SessionRestore.binds(stored, to: nil, savedBySchema: file.schemaVersion))
+    }
+
+    @Test func newFilesAreSavedAsVersionTwo() {
+        #expect(SessionFile.currentSchemaVersion == 2)
+    }
+
     @Test func noSavedSessionMeansAFreshStart() {
         #expect(SessionRestore.match(nil, to: [frame("DSCF0001")]) == .none)
     }

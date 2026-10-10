@@ -22,14 +22,22 @@ public enum SourceLocator {
         FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? []
     }
 
-    /// For a folder on removable media, the volume root, so a card yields the same FrameIDs however it
-    /// was opened; otherwise the folder itself (SR2).
+    /// What a source's FrameIDs are relative to, and what is scanned (SR1, SR2). For any folder on a
+    /// camera card that is the whole card, so the card yields the same frames however it was opened.
+    /// Every other folder is its own base.
     public static func identityBase(for folder: URL) -> URL {
         let keys: Set<URLResourceKey> = [.volumeURLKey, .volumeIsRemovableKey, .volumeIsEjectableKey]
-        guard let values = try? folder.resourceValues(forKeys: keys), let volume = values.volume,
-            values.volumeIsRemovable == true || values.volumeIsEjectable == true
-        else { return folder }
-        return volume
+        guard let values = try? folder.resourceValues(forKeys: keys), let volume = values.volume else { return folder }
+        return identityBase(
+            for: folder, volume: volume,
+            isRemovable: values.volumeIsRemovable == true || values.volumeIsEjectable == true)
+    }
+
+    /// The decision behind `identityBase(for:)`, given what the volume reported. A card reader reports its
+    /// cards as removable; a USB SSD doesn't (measured 2026-10-10), so a `DCIM` tree copied onto one is
+    /// just a folder.
+    static func identityBase(for folder: URL, volume: URL, isRemovable: Bool) -> URL {
+        isRemovable && isCameraCard(volume) ? volume : folder
     }
 
     /// The entry in `folder` whose name matches `name` ignoring case (exFAT is case-insensitive).

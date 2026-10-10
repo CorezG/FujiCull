@@ -123,6 +123,15 @@ public struct CullSession: Equatable, Sendable {
         cursor = visible[min(max(base + delta, 0), visible.count - 1)]
     }
 
+    /// Clears a restored decision that turned out not to belong to this frame (SR2). It isn't a user action,
+    /// so nothing is added to undo, and undo steps already recorded for the frame are dropped.
+    public mutating func discardMark(of id: FrameID) {
+        guard marks[id] != nil, let index = frameIDs.firstIndex(of: id) else { return }
+        setMark(FrameMark(), for: id)
+        undoStack.removeAll { $0.frame == index }
+        settleCursor(from: cursor)
+    }
+
     private mutating func undo() {
         guard let last = undoStack.popLast() else { return }
         setMark(last.previous, for: frameIDs[last.frame])

@@ -16,6 +16,44 @@ private func applying(_ commands: [CullCommand], to start: CullSession) -> CullS
 // The keymap's session rules (REQUIREMENTS §4.2–4.3, R7–R11; DESIGN §5.2, D3, D4).
 @Suite struct CullSessionTests {
 
+    // MARK: Restored decisions that turn out not to belong (SR2)
+
+    @Test func discardingARestoredMarkReturnsTheFrameToUndecidedWithNoUndoStep() {
+        let ids = (1...3).map { FrameID("DCIM/100_FUJI/DSCF\($0)") }
+        var s = CullSession(
+            frameIDs: ids,
+            marks: [ids[0]: FrameMark(decision: .keep, isFavourite: true), ids[1]: FrameMark(decision: .reject)])
+
+        s.discardMark(of: ids[0])
+
+        #expect(s.mark(at: 0) == FrameMark())
+        #expect(s.counts == CullCounts(keep: 0, reject: 1, undecided: 2, favourite: 0))
+        #expect(!s.canUndo)
+    }
+
+    @Test func discardingAMarkAlsoDropsUndoStepsForThatFrame() {
+        var s = session(3)
+        s.apply(.reject)  // frame 0, cursor moves to 1
+        s.apply(.keep)  // frame 1
+
+        s.discardMark(of: s.frameIDs[0])
+        s.apply(.undo)
+
+        #expect(s.mark(at: 1) == FrameMark(), "the keep on frame 1 is undone")
+        #expect(s.mark(at: 0) == FrameMark(), "the discarded reject does not come back")
+        #expect(!s.canUndo)
+    }
+
+    @Test func discardingAnUnknownOrUndecidedFrameDoesNothing() {
+        var s = session(2)
+        let before = s
+
+        s.discardMark(of: FrameID("DCIM/999_FUJI/NOPE"))
+        s.discardMark(of: s.frameIDs[1])
+
+        #expect(s == before)
+    }
+
     // MARK: ↑ Keep, ↓ Reject (with auto-advance, R11)
 
     @Test func upKeepsTheFrameAndMovesToTheNext() {

@@ -58,4 +58,34 @@ import Testing
 
         #expect(SourceLocator.identityBase(for: folder).standardizedFileURL == folder.standardizedFileURL)
     }
+
+    @Test func aFolderInsideACameraCardHasTheWholeCardAsItsIdentityBase() throws {
+        let card = try TempTree()
+        try card.file("DCIM/124_FUJI/DSCF0001.JPG")
+
+        let base = SourceLocator.identityBase(for: card.url("DCIM/124_FUJI"), volume: card.root, isRemovable: true)
+
+        #expect(base == card.root)
+    }
+
+    @Test func aFolderOnARemovableDriveThatIsNotACameraCardIsItsOwnBase() throws {
+        // A USB stick with two trips on it: each folder is its own source, with its own session.
+        let stick = try TempTree()
+        try stick.file("Trip A/DSCF0001.JPG")
+        try stick.file("Trip B/DSCF0001.JPG")
+
+        let base = SourceLocator.identityBase(for: stick.url("Trip A"), volume: stick.root, isRemovable: true)
+
+        #expect(base == stick.url("Trip A"))
+    }
+
+    @Test func aCardsFoldersCopiedToAFixedDriveAreNotACard() throws {
+        // The archive SSD reports "not removable" (spike, 2026-10-10), so a DCIM tree copied onto it is a folder.
+        let drive = try TempTree()
+        try drive.file("DCIM/124_FUJI/DSCF0001.JPG")
+
+        let base = SourceLocator.identityBase(for: drive.url("DCIM"), volume: drive.root, isRemovable: false)
+
+        #expect(base == drive.url("DCIM"))
+    }
 }

@@ -4,12 +4,23 @@ public struct StoredFrame: Codable, Equatable, Sendable {
     /// Exact sizes of the frame's files when it was decided; nil for a file the frame doesn't have.
     public let jpgSize: Int64?
     public let rafSize: Int64?
+    /// When the photo was taken, once its EXIF has been read; nil before that, and in version 1 files.
+    public let captureTime: CaptureTime?
     public let mark: FrameMark
+
+    public init(id: FrameID, jpgSize: Int64?, rafSize: Int64?, captureTime: CaptureTime?, mark: FrameMark) {
+        self.id = id
+        self.jpgSize = jpgSize
+        self.rafSize = rafSize
+        self.captureTime = captureTime
+        self.mark = mark
+    }
 }
 
 /// What `SessionStore` writes to `Sessions/<key>.json` (DESIGN §5.3). About 100–200 KB for 2,000 frames.
 public struct SessionFile: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    /// Version 2 added each frame's capture time (SR2). Version 1 files still open.
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var key: String
@@ -20,7 +31,11 @@ public struct SessionFile: Codable, Equatable, Sendable {
     /// Sorted by FrameID, so saves of the same state are byte-identical.
     public var frames: [StoredFrame]
 
-    public init(key: String, rootHint: String, session: CullSession, frames scanned: [Frame]) {
+    /// `captureTimes` holds what is known so far; a frame missing from it is saved without one.
+    public init(
+        key: String, rootHint: String, session: CullSession, frames scanned: [Frame],
+        captureTimes: [FrameID: CaptureTime] = [:]
+    ) {
         self.schemaVersion = Self.currentSchemaVersion
         self.key = key
         self.rootHint = rootHint
@@ -29,7 +44,8 @@ public struct SessionFile: Codable, Equatable, Sendable {
         let byID = Dictionary(scanned.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.frames = session.storedMarks.compactMap { id, mark in
             guard let frame = byID[id] else { return nil }
-            return StoredFrame(id: id, jpgSize: frame.jpg?.size, rafSize: frame.raf?.size, mark: mark)
+            return StoredFrame(
+                id: id, jpgSize: frame.jpg?.size, rafSize: frame.raf?.size, captureTime: captureTimes[id], mark: mark)
         }
         .sorted { $0.id < $1.id }
     }
@@ -47,8 +63,21 @@ public enum RestoreOutcome: Equatable, Sendable {
 }
 
 public enum SessionRestore {
-    /// Matches `file` to the scanned `frames` by identity: same FrameID and the same exact size for each
-    /// file (SR2). Frames whose files Apply deleted are expected to be gone and don't count (SR4).
+    /// Whether a restored decision really belongs to the scanned frame, now that the frame's capture time
+    /// has been read (SR2). Path and sizes can repeat after a card is formatted and refilled; the moment a
+    /// photo was taken doesn't. With no capture time on either side there is no proof, so it doesn't bind.
+    ///
+    /// Files from schema 1 never recorded capture times; their decisions are accepted this once, and the
+    /// next save records the times.
+    public static func binds(_ stored: StoredFrame, to scanned: CaptureTime?, savedBySchema schema: Int) -> Bool {
+        guard let scanned else { return false }
+        guard let saved = stored.captureTime else { return schema < 2 }
+        return saved == scanned
+    }
+
+    /// Matches `file` to the scanned `frames` by FrameID and the exact size of each file, which is all a
+    /// scan knows. `binds` then confirms each match as capture times are read (SR2). Frames whose files
+    /// Apply deleted are expected to be gone and don't count (SR4).
     public static func match(
         _ file: SessionFile?, to frames: [Frame], deletedByApply: Set<FrameID> = []
     ) -> RestoreOutcome {
