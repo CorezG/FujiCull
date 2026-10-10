@@ -238,6 +238,24 @@ private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async 
         #expect(image.width == 300 && image.height == 200)
     }
 
+    @Test func usesTheLargestJPEGReductionThatIsStillAtLeastTheRequestedSize() throws {
+        // JPEG can decode at 1/2, 1/4 or 1/8 size directly, which is several times faster than scaling
+        // (88 ms -> 29 ms on Fuji SD's 20 MP frames). 1200 px wide: 1/2 = 600 >= 500, 1/4 = 300 < 500.
+        let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: 1)
+
+        let image = try PreviewPipeline.decodeDisplay(jpeg, maxPixelSize: 500)
+
+        #expect(image.width == 600 && image.height == 400)
+    }
+
+    @Test func aReducedDecodeIsStillTurnedUpright() throws {
+        let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: 8)
+
+        let image = try PreviewPipeline.decodeDisplay(jpeg, maxPixelSize: 500)
+
+        #expect(image.width == 400 && image.height == 600)
+    }
+
     @Test func appliesTheExifOrientation() throws {
         let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: 6)
 
@@ -268,15 +286,23 @@ private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async 
         }
     }
 
+    @Test func anImageTooBigForTheScreenButTooSmallToHalveIsScaledToFit() throws {
+        // 1200 px wide for a 700 px screen: 1/2 would be 600 (too small), so it's scaled to exactly 700.
+        let jpeg = try syntheticJPEG(width: 1200, height: 800, orientation: 6)
+
+        let image = try PreviewPipeline.decodeDisplay(jpeg, maxPixelSize: 700)
+
+        #expect(image.width == 467 && image.height == 700)
+    }
+
     @Test func readsAndDecodesAFile() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("FujiCull-\(UUID().uuidString).JPG")
         try syntheticJPEG(width: 1200, height: 800, orientation: 1).write(to: url)
         defer {
             do { try FileManager.default.removeItem(at: url) } catch { Issue.record("cleanup failed: \(error)") }
         }
-
-        let image = try PreviewPipeline.loadDisplay(url, maxPixelSize: 600)
-
+        // The app reads the file through the CardReader, then decodes the bytes.
+        let image = try PreviewPipeline.decodeDisplay(Data(contentsOf: url), maxPixelSize: 600)
         #expect(image.width == 600)
     }
 }

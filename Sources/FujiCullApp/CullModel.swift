@@ -406,9 +406,11 @@ final class CullModel {
         let reader = reader
         Task {
             do {
-                let image = try await reader.submit(key: key, priority: priority) {
-                    try PreviewPipeline.loadDisplay(url, maxPixelSize: maxPixelSize)
-                }
+                // The card reader only reads; decoding runs alongside, so the next file's read isn't held up.
+                let data = try await reader.submit(key: key, priority: priority) { try Data(contentsOf: url) }
+                let image = try await Task.detached(priority: .userInitiated) {
+                    try PreviewPipeline.decodeDisplay(data, maxPixelSize: maxPixelSize)
+                }.value
                 guard generation == self.generation else { return }
                 inFlight.remove(key)
                 displayCache.insert(image, for: frame.id, cost: image.bytesPerRow * image.height)
@@ -436,7 +438,10 @@ final class CullModel {
         let reader = reader
         Task {
             do {
-                let image = try await reader.submit(key: key, priority: priority) { try PreviewPipeline.loadFull(url) }
+                let data = try await reader.submit(key: key, priority: priority) { try Data(contentsOf: url) }
+                let image = try await Task.detached(priority: .userInitiated) {
+                    try PreviewPipeline.decodeFull(data)
+                }.value
                 guard generation == self.generation else { return }
                 inFlight.remove(key)
                 guard isZoomed else { return }
