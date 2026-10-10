@@ -22,13 +22,14 @@ Apply is the only destructive part of FujiCull. It permanently deletes files fro
   - Claims the final name with an `O_EXCL` placeholder and renames the partial over it. The rename only ever replaces FujiCull's own placeholder, which is safe on exFAT where `RENAME_EXCL` is unsupported.
   - Runs `F_FULLFSYNC` on the directory, then records `verified`.
   - All operations go through one directory descriptor whose volume UUID has been checked.
-  - Copies to Google Photos/ from the archive JPG verified in the same run.
+  - Copies to Google Photos/ from the archive JPG, whose bytes must hash to the SHA-256 recorded from the card. _(Amended 2026-10-10; was "verified in the same run", which skipped the copy after a resume.)_
 - **Ledger:** one append-only JSON-lines journal per card (`Ledger/<key>.jsonl`), with `F_FULLFSYNC` after every record and one record per file per operation (reserve, verified, tagged, trashed, deleted, released). The latest record for a file is authoritative. A torn tail is truncated, and any other corruption stops Apply and asks.
 - **Archive removal** (DESIGN D6, R26): only files with a `reserve` → `verified` chain in this card's ledger are eligible. Each file is checked by size and SHA-256 re-hash before it's moved to the SSD's Trash. This happens in the same confirmed step, before the card deletion.
 - **Deletion gate:** every Keep frame on the card must have verified archive copies that are still present (Google Photos copies excluded), every video must be verified, the card must not be read-only, and the user must confirm in a modal whose default button is Cancel. Before each `unlink`, the file's size and modification date are checked against the scan snapshot. Card files are never moved to the Trash.
 - **Cancellation:** unmounting either volume or any I/O error cancels the run. A sleep-prevention assertion is held during Apply.
 
 - **Hardening from two doubt-review rounds (2026-10-09):** decisions frozen during Apply; the source card re-identified before every read and delete; the archive resolved by volume UUID through one checked directory descriptor; locks; per-file journal records; all-or-nothing checks per frame; a gate that re-checks archive files on disk and never re-copies silently; `Google Photos/` treated as disposable. See DESIGN §5.7 SR6–SR24 and [the review](../reviews/2026-10-09-apply-doubt-review.md).
+- **Third round and exFAT measurements (2026-10-10):** an exclusive rename is confirmed unsupported on this driver, so the placeholder stays; the read-back is confirmed to come from the device when the write descriptor has `F_NOCACHE`. Added: capture time in frame identity, recovery before planning, intent records before every Trash move and delete, re-homing instead of blocking on a name conflict, card-folder syncs, and a final check of every keeper on every run. Details in DESIGN §5.7 and [the spike](../spikes/2026-10-10-exfat-fskit.md).
 
 ## Alternatives Considered
 

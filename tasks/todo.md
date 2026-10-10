@@ -200,15 +200,30 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ## Phase 4 — Apply core (test-first, no UI)
 
+_Design reviewed a third time on 2026-10-10 ([review](../docs/reviews/2026-10-09-apply-doubt-review.md), [exFAT measurements](../docs/spikes/2026-10-10-exfat-fskit.md)). The tasks below carry the resulting rules SR25–SR28 and the changes to SR2, SR7, SR8, SR10, SR17. No code or test in this phase touches a real volume._
+
+### - [ ] T15a: A camera card is always scanned whole, and capture time joins frame identity
+**Description:** Two changes to code from phases 1–2 that Apply's safety rests on (review 3, findings 1 and 11).
+- `SourceLocator.identityBase` returns the volume root only for a camera card (removable or ejectable, with `DCIM/NNN_FUJI`); any other folder is its own base and is keyed by path. Opening a folder inside a card scans the whole card.
+- `StoredFrame` keeps the capture time once known. A restored decision whose capture time differs from the scanned frame's, or is missing on either side once metadata has been read, is dropped (the frame goes back to Undecided) and counted in a notice.
+**Acceptance:**
+- [ ] Opening `DCIM/124_FUJI` on a card yields the same frames, key and decisions as opening the card.
+- [ ] Two folders on one non-card drive get separate sessions.
+- [ ] A stored Reject does not bind to a frame with the same path and sizes but a different capture time.
+**Verify:** `make test`; manual: open a subfolder of a card.
+**Depends on:** T9
+**Files:** `SourceLocator.swift`, `SessionKey.swift`, `SessionFile.swift`, `CullModel.swift`, their tests
+**Scope:** S
+
 ### - [ ] T16: FileSystem protocol and the safe copy primitive
 **Description:** A `FileSystem` protocol with `LocalFileSystem` and a `FaultyFileSystem` test double. `safeCopy(src, dstDir, name)`:
 - copy in 8 MB chunks while hashing with SHA-256
 - write to `.<name>.fujicull-partial`, then `F_FULLFSYNC`
 - read back with `F_NOCACHE`, compare hashes
 - set the modification time
-- rename with `RENAME_EXCL`, falling back to check-then-rename where it's unsupported (exFAT)
+- claim the final name with a zero-length `O_CREAT | O_EXCL` placeholder, then rename the partial over it (an exclusive rename is not supported on the exFAT driver: measured)
 - support cancellation between chunks
-**Safety rules:** SR7 (all I/O via one `fstatfs`-checked directory descriptor), SR10 (`O_EXCL` placeholder claims the final name; rename only over our own placeholder), write-side `F_NOCACHE`, directory `F_FULLFSYNC` before `verified`.
+**Safety rules:** SR7 (all I/O relative to one directory descriptor whose volume UUID is read with `fgetattrlist`), SR10 (`O_EXCL` placeholder claims the final name; rename only over our own placeholder; "exists" is a typed name-conflict error), write-side `F_NOCACHE` with the read-back as the file's first read, an `F_FULLFSYNC` error fails the copy, directory `F_FULLFSYNC` before `verified`.
 **Acceptance:**
 - [ ] Each injected fault (a write error at chunk N, a corrupted read-back, cancellation, the destination already existing) leaves no final file and no leftover `.partial` file, and returns a typed error.
 - [ ] A successful copy has a matching hash and mtime.
@@ -219,7 +234,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T17: Ledger model, stored in the session
 **Description:** `Ledger` holds the destination folder (fixed after the first run, D7), the per-frame name mapping, and entries for verified, tagged, archive-removed and deleted files (with size, mtime and sha256). It is stored in `SessionFile`. Ledger updates are written synchronously with `fsync`.
-**Safety rules:** SR5, SR15 (separate per-card JSONL journal, one record per file per operation, latest record authoritative, torn tail truncated, mid-file corruption stops and asks, `released` records).
+**Safety rules:** SR5, SR15 (separate per-card JSONL journal, one record per file per operation, three record families with the latest record in each authoritative, torn tail truncated, mid-file corruption stops and offers Start fresh or Cancel, `released` and `superseded` records), SR25 (`trashing` / `deleting` intent records), every `reserve` and `verified` names its destination.
 **Acceptance:**
 - [ ] Round-trip tests pass.
 - [ ] Ledger writes survive a simulated crash: the write is atomic, so after a kill the file holds either the old or the new ledger.
@@ -238,9 +253,10 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - archive removals
 - the space calculation (+1 GB margin)
 - pre-flight facts (counts, read-only flag, the R22 gate state)
-**Safety rules:** SR8–SR14 (per-file planning; exact on-disk names, case-insensitive without normalisation, ambiguity stops; own-reservation reuse and joint re-allocation; Google Photos disposable; tags only on files we tagged; removal only for `reserve`→`verified` chains; left-on-card list incl. other files; cluster-rounded space incl. `._`), R27 videos.
+**Safety rules:** SR2 (records bind only with a matching capture time; closed frames; no capture time means never deleted), SR8–SR14 (per-file planning; exact on-disk names, the volume decides what exists, ambiguity stops; own-reservation reuse and joint re-allocation; Google Photos copy from the archive JPG whenever none is on record, disposable; tags planned from actual tags, only on files we tagged; removal only for current `reserve`→`verified` chains; left-on-card list incl. other files and a count of skipped items; cluster-rounded space incl. `._`), SR26 (re-homing a whole frame; `superseded` files never removed), several destinations per ledger, R27 videos.
 **Acceptance:**
 - [ ] Tests cover: first run; a re-run after deciding the Undecided frames; Keep→Reject after archiving (archive removal planned); Keep→Undecided after archiving (nothing planned); favourite added and removed; collisions (including one only in `Google Photos/`); insufficient space; a read-only card; and that Undecided frames are never touched.
+- [ ] Tests from review 3: a same-path, same-size frame with a different capture time gets a copy and no delete; a resumed run still plans the missing Google Photos copies; a foreign file at a needed name re-homes the whole frame; keepers recorded under an earlier folder are still checked there.
 **Verify:** `make test`
 **Depends on:** T2, T7, T17
 **Files:** `Sources/FujiCullCore/Apply/{ApplyPlanner,ApplyPlan,ApplyError}.swift`, `Tests/FujiCullCoreTests/ApplyPlannerTests.swift`
@@ -248,9 +264,10 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T19: ApplyExecutor, part 1 — copy, verify, tag, resume
 **Description:** Execute a plan's copy operations one after another with `safeCopy`. The Google Photos copy is made from the verified archive file. Each verified file is recorded in the ledger. Finder tags are applied through `NSURL` resource values, merged with existing tags. The executor reports progress (bytes and ETA). It is cancellable. On resume, a final-named file without a ledger entry is adopted only if its hash matches.
-**Safety rules:** SR3 (archive lock), SR15 (records written after each operation), executor steps 1–3 (sweep ledger-reserved partials; crash-after-rename recovery by hash).
+**Safety rules:** SR3 (archive lock), SR15 (records written after each operation), executor step 1 (recover before planning: remove our zero-length placeholder, adopt a completed rename only by hash against the card, then sweep partials), steps 2–4, SR28 (the final check of every keeper always runs and feeds the summary).
 **Acceptance:**
-- [ ] Fault injection at every step gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming.
+- [ ] Fault injection at every step, **including between the placeholder claim and the rename**, gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming.
+- [ ] A run interrupted before the Google Photos copies makes them on the next run.
 - [ ] Tags are verified on the archive RAF and JPG after the run, and the `Google Photos/` copy has no Favourite tag (Q11).
 **Verify:** `make test`
 **Depends on:** T16, T18
@@ -263,13 +280,14 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - After a confirmation callback, move archive files of frames rejected after archiving to the Trash. Each file must match its ledger size and mtime.
 - Then `unlink` card rejects after rechecking each file's size and mtime against the scan snapshot.
 - Record everything in the ledger, and produce the summary model.
-**Safety rules:** SR16 (source volume + file identity before every read/delete), SR17 (gate: archive files present with recorded size, Google Photos excluded, Copy again / Locate folder, never silent re-copy), SR18 (archive removal: check all, trash each, record each; runs even on a locked card), SR19 (card delete: Reject still, snapshot match, deletable flags; split-pair handling), SR8 (Trash for non-card sources).
+**Safety rules:** SR16 (volume mismatch stops the run, file mismatch skips the frame), SR17 (gate: final check passed, earlier-run files re-hashed, every destination reachable, Google Photos excluded, Copy again / Locate folder, never silent re-copy), SR18 (archive removal: check all, `trashing`, trash, `trashed`; a failed move is never replaced by an unlink; runs even on a locked card), SR19 (card delete: Reject still, capture time present, snapshot match, deletable flags; `deleting`, unlink, `deleted`; split-pair handling), SR25 (recovery settles intent records), SR27 (card folder synced after each folder and every 100 files), SR8 (Trash for non-card sources).
 **Acceptance:**
 - [ ] In every fault test from T16/T19, **zero files are deleted from the card or the archive**.
 - [ ] A card file changed since the scan is skipped and reported.
 - [ ] An archive file changed since verification is skipped and reported.
 - [ ] A read-only card skips card deletion but still allows the confirmed archive removal.
 - [ ] Declining the confirmation deletes nothing.
+- [ ] A crash between a Trash move or unlink and its record is settled on the next run, with no frame skipped for ever.
 **Verify:** `make test`
 **Depends on:** T19
 **Files:** `ApplyExecutor.swift`, `Sources/FujiCullCore/Apply/ApplySummary.swift`, `Tests/FujiCullCoreTests/ApplyExecutorDeleteTests.swift`

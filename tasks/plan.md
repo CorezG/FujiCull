@@ -28,7 +28,7 @@ Build FujiCull in six phases, each ending at a checkpoint where something real c
 | 1 Browse slice | T2–T6 | **Checkpoint A:** open a folder or card and browse with ← → |
 | 2 Culling | T7–T10 | **Checkpoint B:** cull a whole folder, quit, relaunch, resume |
 | 3 Viewing polish | T11–T15 | **Checkpoint C:** grid, zoom, EXIF, orphans; performance targets measured |
-| 4 Apply core | T16–T20 | **Checkpoint D:** the Apply engine is proven by fault-injection tests |
+| 4 Apply core | T15a, T16–T20 | **Checkpoint D:** the Apply engine is proven by fault-injection tests |
 | 5 Apply UI + rehearsal | T21–T24 | **Checkpoint E:** a full Apply rehearsal against a folder copy of a real card |
 
 ## Dependency graph
