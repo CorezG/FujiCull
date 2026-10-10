@@ -57,8 +57,9 @@ final class CullModel {
     @ObservationIgnored private var sessionKey: String?
     @ObservationIgnored private var saveRevision = 0
     @ObservationIgnored private var pendingResume: CullSession?
-    /// About five 2560 px frames (DESIGN §5.4 memory budget).
-    @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 100_000_000)
+    /// Eight display images (~20 MB each at 2736 px). The prefetch window is five, so the frame preloaded
+    /// for the next step is never pushed out early (owner saw intermittent lag with a 100 MB budget).
+    @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 160_000_000)
     @ObservationIgnored private var thumbnailCache = PreviewCache<FrameID, CGImage>(byteBudget: 30_000_000)
     /// T2 for the current frame only, while zoomed: 80 MB at size M (DESIGN §5.4).
     @ObservationIgnored private var fullCache = PreviewCache<FrameID, CGImage>(byteBudget: 340_000_000)
@@ -338,7 +339,7 @@ final class CullModel {
             let main = String(format: "%.1f", timing.mainMs)
             let strip = String(format: "%.1f", lastStripRefreshMs)
             timingText = "key→photo \(photo) ms · sharp \(sharp) ms (\(source)) · main \(main) ms · strip \(strip) ms"
-            Self.timingLog.info(
+            Self.timingLog.notice(
                 "move \(frame.rawValue, privacy: .public): photo \(photo, privacy: .public) ms, sharp \(sharp, privacy: .public) ms, \(source, privacy: .public), main \(main, privacy: .public) ms, strip \(strip, privacy: .public) ms"
             )
         }

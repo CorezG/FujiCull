@@ -178,9 +178,9 @@ There are three tiers. Every read goes through one `CardReader` actor that serve
 |---|---|
 | T0 (2,000 frames, stored compressed, ~10 KB each) | ~20 MB |
 | Decoded T0 LRU (visible strip and grid) | ~30 MB |
-| T1 (5 frames at 2560 px) | ~90 MB |
-| T2 (current + next) | ~320 MB peak, only while zoomed |
-| **Total** | **~140 MB normally, ~460 MB while zoomed** |
+| T1 (up to 8 frames at 2736 px, the JPEG ½ decode) | ~160 MB |
+| T2 (current frame only) | 80 MB at size M (160 MB at L), only while zoomed |
+| **Total** | **~210 MB normally, ~290 MB while zoomed (size M)** |
 
   All caches are cleared on source close or unmount, and the T2 cache is cleared when zoom is turned off.
 
