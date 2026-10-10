@@ -109,12 +109,12 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullApp/{KeyMap,AppCommand,AppMenus}.swift`, `Sources/FujiCullApp/Viewer/OverlayView.swift`, `CullModel.swift`
 **Scope:** M
 
-### - [ ] T9: SessionStore — auto-save, restore, reconcile (R19–R21, ADR-005)
+### - [x] T9: SessionStore — auto-save, restore, reconcile (R19–R21, ADR-005)
 **Description:** A `Codable` `SessionFile` (schemaVersion, key, decisions that aren't Undecided, cursor, filter, ledger placeholder). `SessionKey` derivation: volume UUID, then volume identifier, then canonical path. The restore rule (revised by SR4): match saved decisions by frame identity; a full match restores silently, a partial match asks Resume / Start fresh, new frames arrive Undecided. Writes are debounced to 300 ms and atomic, and flushed on quit and unmount.
 **Safety rules:** SR1–SR5 (one session per card key, lock while open, identity-based restore with a Resume / Start fresh prompt, single writer actor with `F_FULLFSYNC`). Tests: reformatted card with reused DSCF names → prompt; normal post-Apply card restores silently; card opened as volume vs `DCIM` folder → same session.
 **Acceptance:**
-- [ ] Tests cover: round trip, restore after rejects are deleted, new frames appearing, a partial match (reformatted card with reused names) offering Resume / Start fresh with the old session archived, and a corrupt file set aside as `.bad` with a fresh session.
-- [ ] No code path writes inside the source root (asserted in tests).
+- [x] Tests cover: round trip, restore after rejects are deleted, new frames appearing, a partial match (reformatted card with reused names) offering Resume / Start fresh with the old session archived, and a corrupt file set aside as `.bad` with a fresh session.
+- [x] No code path writes inside the source root (asserted in tests).
 **Verify:** `make test`
 **Depends on:** T7
 **Files:** `Sources/FujiCullCore/Persist/{SessionStore,SessionKey,SessionFile}.swift`, `Tests/FujiCullCoreTests/SessionStoreTests.swift`
