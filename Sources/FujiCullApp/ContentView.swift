@@ -132,6 +132,7 @@ struct BrowseView: View {
             shift: flags.contains(.shift), command: flags.contains(.command), control: flags.contains(.control),
             option: flags.contains(.option))
         guard let action = KeyMap.action(for: press) else { return false }
+        if action == .fitToWindow, !model.canPerform(action) { return false }
         model.perform(action)
         return true
     }

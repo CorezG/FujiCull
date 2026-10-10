@@ -274,6 +274,8 @@ final class CullModel {
             }
             if session.cursor != before.cursor || session.currentFrameID != before.frame { showCurrent() }
             saveSoon()
+        case .fitToWindow:
+            setZoom(nil)
         case .toggleZoom, .toggleGrid, .toggleExif:
             guard canPerform(action) else { return }
             switch action {
@@ -318,6 +320,7 @@ final class CullModel {
         case .cull(.undo): return session.canUndo
         case .cull: return !frames.isEmpty
         case .toggleGrid: return !frames.isEmpty
+        case .fitToWindow: return isZoomed
         // Return opens the selected frame from the grid; in the single view it zooms a frame that has a JPG.
         case .toggleZoom: return isGrid || currentFrame?.jpg != nil
         case .toggleExif: return false

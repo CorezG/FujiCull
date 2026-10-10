@@ -27,6 +27,8 @@ public enum KeyAction: Equatable, Sendable {
     case toggleZoom
     case toggleGrid
     case toggleExif
+    /// Esc: leave zoom and show the whole photo again.
+    case fitToWindow
 }
 
 /// The fixed one-handed keymap (REQUIREMENTS §4.3; no remapping in v1).
@@ -39,6 +41,7 @@ public enum KeyMap {
         static let returnKey: UInt16 = 36
         static let keypadEnter: UInt16 = 76
         static let delete: UInt16 = 51
+        static let escape: UInt16 = 53
     }
 
     public static func action(for press: KeyPress) -> KeyAction? {
@@ -51,6 +54,7 @@ public enum KeyMap {
         case Code.right: return .cull(press.shift ? .jump(10) : .next)
         case Code.returnKey, Code.keypadEnter: return .toggleZoom
         case Code.delete: return .cull(.undo)
+        case Code.escape: return .fitToWindow
         default: break
         }
         // Punctuation and letters go by the typed character, so other keyboard layouts still work.

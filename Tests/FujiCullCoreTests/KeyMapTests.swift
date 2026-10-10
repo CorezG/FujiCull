@@ -19,6 +19,7 @@ import Testing
         (KeyPress(keyCode: 51), .cull(.undo)),
         (KeyPress(keyCode: 5, characters: "g"), .toggleGrid),
         (KeyPress(keyCode: 34, characters: "i"), .toggleExif),
+        (KeyPress(keyCode: 53), .fitToWindow),
     ])
     func everyKeymapRowMapsToItsAction(press: KeyPress, action: KeyAction) {
         #expect(KeyMap.action(for: press) == action)

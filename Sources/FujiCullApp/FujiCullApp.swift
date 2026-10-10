@@ -39,6 +39,7 @@ struct FujiCullApp: App {
                 item("Forward 10 Frames", .cull(.jump(10)), .rightArrow, [.shift])
                 Divider()
                 item("Zoom to 100%", .toggleZoom, .return)
+                item("Fit to Window", .fitToWindow, .escape)
                 item("Grid", .toggleGrid, "g")
                 item("Show EXIF", .toggleExif, "i")
                 Divider()
