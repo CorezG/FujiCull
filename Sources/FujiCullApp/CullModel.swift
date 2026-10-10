@@ -73,6 +73,7 @@ final class CullModel {
     /// Holding an arrow key: moves show thumbnails only, and the frame stopped on loads when the key is
     /// released or after a short rest (T15), so the card isn't busy reading frames already flown past.
     @ObservationIgnored private var isRifling = false
+    @ObservationIgnored private var hold = HoldTiming()
     @ObservationIgnored private var settleTask: Task<Void, Never>?
     @ObservationIgnored private var openStarted: ContinuousClock.Instant?
     @ObservationIgnored private var openScanMs = 0.0
@@ -307,6 +308,8 @@ final class CullModel {
             if session.cursor != before.cursor || session.currentFrameID != before.frame {
                 timing.start(frame: session.currentFrameID)
                 if let event = NSApp.currentEvent, event.type == .keyDown, event.isARepeat {
+                    if !isRifling { hold = HoldTiming() }
+                    hold.key(pressedAt: event.timestamp, handledAt: ProcessInfo.processInfo.systemUptime)
                     isRifling = true
                     showCurrent(loadsDisplay: false)
                     settleSoon()
@@ -354,6 +357,9 @@ final class CullModel {
         settleTask = nil
         guard isRifling else { return }
         isRifling = false
+        if hold.frames > 0 {
+            Self.timingLog.notice("hold: \(self.hold.summary, privacy: .public)")
+        }
         showCurrent()
     }
 
@@ -377,6 +383,7 @@ final class CullModel {
         if timing.photoMs == nil {
             timing.photoMs = ms
             timing.wasPreloaded = currentIsDisplayQuality
+            if isRifling { hold.thumbnailShown(afterMs: ms) }
         }
         if currentIsDisplayQuality, timing.sharpMs == nil {
             timing.sharpMs = ms
@@ -663,6 +670,38 @@ final class CullModel {
             return volumeName
         }
         return url.lastPathComponent
+    }
+}
+
+/// One held key's timings, to check that holding → never stalls (T15).
+private struct HoldTiming {
+    var frames = 0
+    private var firstHandled: TimeInterval = 0
+    private var lastHandled: TimeInterval = 0
+    private var thumbnailsShown = 0
+    /// The longest a key press waited before the app got to it: a busy main thread shows up here.
+    private var longestWaitMs = 0.0
+    private var longestGapMs = 0.0
+    private var slowestThumbnailMs = 0.0
+
+    mutating func key(pressedAt pressed: TimeInterval, handledAt now: TimeInterval) {
+        if frames == 0 { firstHandled = now } else { longestGapMs = max(longestGapMs, (now - lastHandled) * 1000) }
+        longestWaitMs = max(longestWaitMs, (now - pressed) * 1000)
+        lastHandled = now
+        frames += 1
+    }
+
+    mutating func thumbnailShown(afterMs ms: Double) {
+        thumbnailsShown += 1
+        slowestThumbnailMs = max(slowestThumbnailMs, ms)
+    }
+
+    var summary: String {
+        let seconds = lastHandled - firstHandled
+        let each = frames > 1 ? Int(seconds * 1000 / Double(frames - 1)) : 0
+        return "\(frames) frames in \(String(format: "%.1f", seconds)) s (\(each) ms each), "
+            + "longest gap \(Int(longestGapMs)) ms, longest key wait \(Int(longestWaitMs)) ms, "
+            + "thumbnails shown \(thumbnailsShown), slowest \(Int(slowestThumbnailMs)) ms"
     }
 }
 
