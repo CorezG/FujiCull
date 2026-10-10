@@ -63,6 +63,10 @@ final class CullModel {
     @ObservationIgnored private var unconfirmed: [FrameID: StoredFrame] = [:]
     /// How many restored decisions were cleared because the photos turned out to be different ones.
     private(set) var clearedDecisions = 0
+    /// The Apply sheet, while it is open. Culling is frozen for as long as it is (SR6).
+    private(set) var apply: ApplyModel?
+    /// The trip folder this card was last archived to, to pre-fill the next Apply (D7).
+    @ObservationIgnored private var lastDestination: Ledger.Destination?
     /// Eight display images (~20 MB each at 2736 px). The prefetch window is five, so the frame preloaded
     /// for the next step is never pushed out early (owner saw intermittent lag with a 100 MB budget).
     @ObservationIgnored private var displayCache = PreviewCache<FrameID, CGImage>(byteBudget: 160_000_000)
@@ -144,13 +148,16 @@ final class CullModel {
             openStarted = started
             let key = try SessionKey.for(source: folder)
             let saved = try await store.open(key: key)
+            let ledger = await loadLedger()
+            lastDestination = ledger.chosenDestination
             sourceName = name
             identityBase = base
             sourceVolume = try? folder.resourceValues(forKeys: [.volumeURLKey]).volume
             sessionKey = key
             frames = result.frames
             restoredFile = saved
-            switch SessionRestore.match(saved, to: result.frames) {
+            // Frames an earlier Apply deleted are expected to be gone; they don't make this a changed card (SR4).
+            switch SessionRestore.match(saved, to: result.frames, deletedByApply: ledger.framesDeletedFromCard) {
             case .none:
                 session = CullSession(frameIDs: result.frames.map(\.id))
             case .full(let restored):
@@ -256,9 +263,120 @@ final class CullModel {
 
     private func volumeUnmounted(_ volume: URL?) {
         refreshCards()
-        if let volume, let sourceVolume, volume.standardizedFileURL == sourceVolume.standardizedFileURL {
+        // Either drive going away stops a running Apply at once (R23).
+        apply?.volumeUnmounted()
+        apply?.refreshVolumes()
+        if let volume, let sourceVolume, volume.standardizedFileURL == sourceVolume.standardizedFileURL, apply == nil {
             close()
         }
+    }
+
+    // MARK: Apply (DESIGN §5.7)
+
+    var canApply: Bool { phase == .browsing && apply == nil && !frames.isEmpty }
+    var sourceVolumeURL: URL? { sourceVolume }
+
+    func beginApply() {
+        guard canApply else { return }
+        setZoom(nil)
+        saveSoon()
+        apply = ApplyModel(
+            host: self, suggestedTrip: lastDestination?.folder, suggestedArchive: lastDestination?.volumeUUID)
+    }
+
+    func endApply() {
+        apply = nil
+        // The card may have been pulled or ejected while the sheet was open.
+        if let base = identityBase, !FileManager.default.fileExists(atPath: base.path) {
+            close()
+        } else if phase == .browsing {
+            showCurrent()
+        }
+    }
+
+    /// The card's Apply journal as it stands. A journal that can't be read counts as empty here; Apply
+    /// itself stops and says so.
+    private func loadLedger() async -> Ledger {
+        do {
+            let url = try await store.ledgerURL()
+            guard FileManager.default.fileExists(atPath: url.path) else { return Ledger() }
+            return Ledger(try LedgerJournal.open(at: url).records)
+        } catch {
+            return Ledger()
+        }
+    }
+
+    /// Everything Apply needs from this session. It waits until every frame's capture time has been read,
+    /// because a decision only counts for the photo it was made on (SR2).
+    func applySetup(destination: Ledger.Destination, archiveRoots: [String: String]) async throws -> ApplyRun.Setup {
+        guard let base = identityBase, let key = sessionKey else {
+            throw ApplyRun.StartError.failed("No card is open.")
+        }
+        // The card in the reader must still be the one this session is for. For a card with no volume ID,
+        // this is the check that it wasn't swapped.
+        guard try SessionKey.for(source: base) == key else { throw ApplyRun.StartError.stopped(.wrongCard) }
+        await metadataTask?.value
+        for index in frames.indices where headers[frames[index].id] == nil && session.mark(at: index) != FrameMark() {
+            await fetchHeader(index: index, priority: .current)
+        }
+        saveSoon()
+        try await store.flush()
+
+        let keys: Set<URLResourceKey> = [
+            .volumeUUIDStringKey, .volumeIsReadOnlyKey, .volumeURLKey, .volumeIsRemovableKey, .volumeIsEjectableKey,
+        ]
+        let values = try base.resourceValues(forKeys: keys)
+        let uuid = values.volumeUUIDString.flatMap { $0.contains { $0 != "0" && $0 != "-" } ? $0 : nil }
+        let isVolumeRoot = values.volume?.standardizedFileURL == base.standardizedFileURL
+        let isRemovable = values.volumeIsRemovable == true || values.volumeIsEjectable == true
+        let source = ApplyInput.Source(
+            volumeUUID: uuid, isCameraCard: isVolumeRoot && isRemovable && SourceLocator.isCameraCard(base),
+            isReadOnly: values.volumeIsReadOnly == true)
+        // A restored decision that couldn't be confirmed against its photo is left out: the frame is
+        // treated as Undecided, which Apply never touches.
+        let marks = session.storedMarks.filter { unconfirmed[$0.key] == nil }
+        return ApplyRun.Setup(
+            cardRoot: base, frames: frames, marks: marks,
+            captureTimes: headers.compactMapValues(\.exif.captureTime), source: source, destination: destination,
+            archiveRoots: archiveRoots, journalURL: try await store.ledgerURL(),
+            locksDirectory: await store.locksDirectory)
+    }
+
+    /// Brings the session up to date after a run: frames deleted from the card leave the list, and every
+    /// other frame keeps its decision and its undo history (SR21).
+    func applyFinished(ledger: Ledger) async {
+        lastDestination = ledger.chosenDestination ?? lastDestination
+        guard let base = identityBase else { return }
+        let scanned: ScanResult
+        do {
+            scanned = try await Task.detached(priority: .userInitiated) {
+                try SourceScanner.scan(base, identityBase: base)
+            }.value
+        } catch {
+            // The card can't be read any more (pulled or ejected); closing the sheet closes the source.
+            return
+        }
+        guard scanned.frames != frames else { return }
+        let gone = Set(frames.map(\.id)).subtracting(scanned.frames.map(\.id))
+        var next = session.removing(gone)
+        if next.frameIDs != scanned.frames.map(\.id) {
+            // Something else changed on the card as well: keep the decisions, start the undo history again.
+            next = CullSession(
+                frameIDs: scanned.frames.map(\.id), marks: next.storedMarks, cursor: next.currentFrameID,
+                undecidedOnly: next.undecidedOnly)
+        }
+        for id in gone {
+            headers[id] = nil
+            unconfirmed[id] = nil
+            displayCache.remove(id)
+            thumbnailCache.remove(id)
+        }
+        frames = scanned.frames
+        session = next
+        currentImage = nil
+        currentIsDisplayQuality = false
+        saveSoon()
+        thumbnailRevision += 1
     }
 
     // MARK: Saving
@@ -330,7 +448,7 @@ final class CullModel {
 
     /// The single entry point for keys and menu items (ADR-006), so each fires exactly once.
     func perform(_ action: KeyAction) {
-        guard phase == .browsing else { return }
+        guard phase == .browsing, apply == nil else { return }
         let started = ContinuousClock.now
         defer { timing.mainMs = Self.milliseconds(since: started) }
         // Keys can arrive as menu shortcuts or in the view, so take the time from the event itself.
@@ -480,7 +598,7 @@ final class CullModel {
     }
 
     func canPerform(_ action: KeyAction) -> Bool {
-        guard phase == .browsing else { return false }
+        guard phase == .browsing, apply == nil else { return false }
         switch action {
         case .cull(.undo): return session.canUndo
         case .cull: return !frames.isEmpty

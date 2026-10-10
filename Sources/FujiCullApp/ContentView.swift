@@ -30,6 +30,18 @@ struct ContentView: View {
         }
         .frame(minWidth: 900, minHeight: 600)
         .preferredColorScheme(.dark)
+        .toolbar {
+            if model.phase == .browsing {
+                Button("Apply…") { model.beginApply() }
+                    .disabled(!model.canApply)
+                    .help("Copy keepers to the archive, then delete rejects from the card (⌘↩)")
+            }
+        }
+        .sheet(isPresented: Binding(get: { model.apply != nil }, set: { if !$0 { model.apply?.close() } })) {
+            if let apply = model.apply {
+                ApplySheet(model: apply).interactiveDismissDisabled()
+            }
+        }
     }
 }
 

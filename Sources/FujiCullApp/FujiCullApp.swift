@@ -14,6 +14,9 @@ struct FujiCullApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open Folder…") { OpenPanel.chooseFolder(for: model) }
                     .keyboardShortcut("o")
+                Button("Apply…") { model.beginApply() }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .disabled(!model.canApply)
                 Button("Close Card") { model.close() }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
                     .disabled(model.phase != .browsing)
