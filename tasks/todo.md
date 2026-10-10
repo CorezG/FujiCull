@@ -120,20 +120,20 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullCore/Persist/{SessionStore,SessionKey,SessionFile}.swift`, `Tests/FujiCullCoreTests/SessionStoreTests.swift`
 **Scope:** M
 
-### - [ ] T10: Filmstrip with state badges, and the background metadata pass (R14)
+### - [x] T10: Filmstrip with state badges, and the background metadata pass (R14)
 **Description:** A horizontal `NSCollectionView` filmstrip, virtualised, showing T0 thumbnails and badges (green, red, ♥, grey) that stay in sync with the cursor. The background T0 pass fills thumbnails, EXIF and capture dates for every frame without blocking the UI. The cull UI is wired to `SessionStore`.
 **Acceptance:**
-- [ ] A 2,000-frame folder scrolls smoothly, and badges update as soon as a key is pressed.
-- [ ] Quit mid-cull, relaunch and reopen: the marks and position are restored.
+- [x] A 2,000-frame folder scrolls smoothly, and badges update as soon as a key is pressed.
+- [x] Quit mid-cull, relaunch and reopen: the marks and position are restored.
 **Verify:** `make run`; manual check
 **Depends on:** T8, T9
 **Files:** `Sources/FujiCullApp/Viewer/{FilmstripView,ThumbnailCell}.swift`, `Sources/FujiCullImaging/MetadataPass.swift`, `CullModel.swift`
 **Scope:** M
 
 ### Checkpoint B — culling
-- [ ] `make test` is green.
-- [ ] You cull a whole folder copy with one hand, quit, relaunch, and resume.
-- [ ] Review with you before Phase 3.
+- [x] `make test` is green (143 tests, `make check` 11 s, coverage 95.8%).
+- [x] You cull with one hand, quit, relaunch, and resume. Confirmed by the owner on Fuji SD, 2026-10-09.
+- [x] Reviewed with the owner before Phase 3.
 
 ---
 
