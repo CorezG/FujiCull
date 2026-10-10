@@ -41,7 +41,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 - R2. Pair files by identical base name in the same folder (`DSCF1234.JPG` ↔ `DSCF1234.RAF`), case-insensitive.
 - R3. Each pair is one **frame** in the cull list, ordered by DCIM folder, then filename (shooting order). _Amended 2026-10-09; was "by capture time (EXIF), then filename". See ADR-004._
 - R4. Orphans (RAF-only or JPG-only) appear as frames with an **"unpaired"** badge. RAF-only frames show the RAF's embedded preview.
-- R5. Ignore non-image files and hidden files (e.g. `._*`, `.Trashes`).
+- R5. Ignore hidden files (e.g. `._*`, `.Trashes`). Videos (`.MOV`, `.MP4`) are not culled but are found by the scan (R27). Any other file is ignored for culling but listed at Apply as left on the card.
 - R6. If the card is write-locked (SD lock switch), culling and copying work; deletion is disabled with a clear notice.
 
 ### 4.2 Decisions
@@ -101,7 +101,7 @@ Apply runs as an ordered, safe sequence:
    - The trip name must be a valid folder name on the SSD (exFAT forbids `" * / : < > ? \ |`); show an inline error otherwise.
    - Never overwrite: if a filename already exists (e.g. DSCF counter wrapped), append a suffix (`DSCF1234-2.JPG`) and keep the pair names matched.
 3. **Verify** every copied file by reading it back and comparing checksums.
-4. **Tag favourites:** apply a Finder tag **"Favourite"** to the archived RAF and JPG of every ♥ frame. The Google Photos copy is not tagged, so a Finder tag search lists each favourite once. _Amended 2026-10-09 (Q11)._
+4. **Tag favourites:** apply a Finder tag **"Favourite"** to the archived RAF and JPG of every ♥ frame. The Google Photos copy is not tagged, so a Finder tag search shows each favourite's archive pair and no Google Photos duplicates. _Amended 2026-10-09 (Q11)._
 5. **Confirm deletion:** "Delete 1,412 rejected frames (2,824 files, 141 GB) from the card? This cannot be undone." Default button is Cancel.
 6. **Delete rejects** from the card permanently (not to the Trash — the macOS Trash on an SD card just hides files on the card and doesn't free space).
 7. **Summary screen:** copied / verified / deleted / left on card, with "Reveal in Finder" for the archive and the Google Photos folder.
@@ -111,6 +111,7 @@ Apply runs as an ordered, safe sequence:
 - R24. Keepers and undecided frames remain on the card after Apply (I format in camera).
 - R25. Apply can be run again later (e.g. after deciding the undecided ones) and only processes what changed.
 - R26. If a frame that an earlier Apply archived is later changed to **Reject**, the next Apply also removes its archive RAF, archive JPG and Google Photos JPG. These files are moved to the SSD's Trash, are listed in the deletion confirmation, and are removed only if unchanged since FujiCull verified them. A frame changed back to Undecided keeps its archive copy. _Added 2026-10-09._
+- R27. Apply copies every video on the card (`.MOV`, `.MP4`, any case) to `<SSD>/<Trip name>/Videos/` with the same copy-and-verify and never-overwrite rules as photos. Videos are never deleted from the card by FujiCull, never tagged, and not copied to `Google Photos/`. Any other non-photo file is listed in pre-flight and the summary as left on the card and not archived, with a warning that formatting the card loses it. _Added 2026-10-09 (Q12)._
 
 ## 5. Non-functional requirements
 

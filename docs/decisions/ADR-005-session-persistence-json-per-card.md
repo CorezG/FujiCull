@@ -10,11 +10,11 @@ Accepted (2026-10-09)
 Marks must auto-save after every change, survive quitting and ejecting, and come back when the same card is reinserted (R19, R20). Nothing may be written to the card before Apply (R21). The Apply ledger also needs durable storage that is tied to the card. The NFR says "no database server, no catalogue."
 
 ## Decision
-- Store sessions at `~/Library/Application Support/FujiCull/Sessions/<id>.json`, one `Codable` file per source, with a `schemaVersion`.
-- Key a volume source by `volumeUUIDString`, falling back to the volume identifier. Key a folder source by its canonical path.
-- Restore a session only if at least 50% of its stored FrameIDs are still present. Otherwise the card has probably been reformatted, so start a new session and keep the old one.
+- Store one session per card at `~/Library/Application Support/FujiCull/Sessions/<key>.json` (a `Codable` file with a `schemaVersion`), with its Apply journal beside it at `Ledger/<key>.jsonl`. An exclusive lock is held while the card is open.
+- Key any source on a removable volume, whether the volume root or a folder inside it, by `volumeUUIDString`, falling back to the volume identifier. Key a folder source by its canonical path.
+- Each decision is tied to a frame identity: a FrameID relative to the volume root, plus the exact sizes of the files still present, plus the capture time when both sides have one. If only part of a session matches the card, FujiCull shows how much matched and asks Resume or Start fresh. Start fresh moves the old session and ledger to `Archive/`, and their archive files are never removed later.
 - Store only decisions that aren't Undecided, plus the cursor, the filter and the Apply ledger.
-- Debounce writes to 300 ms and write atomically. During Apply, write the ledger synchronously and `fsync` it.
+- Debounce writes to 300 ms. All writes go through one actor and are atomic (temp file, `F_FULLFSYNC`, rename). The Apply journal is a separate file (ADR-003).
 
 ## Alternatives Considered
 

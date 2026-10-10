@@ -16,16 +16,19 @@ Apply is the only destructive part of FujiCull. It permanently deletes files fro
 ## Decision
 - **Planner** (pure, in `FujiCullCore`). It takes the session, scan snapshot, ledger and destination listing, and returns the copy, tag and delete operations plus pre-flight facts. Collision suffixes are chosen per *pair*, so the RAF, the JPG and the Google Photos JPG share one name.
 - **Executor:**
-  - Copies sequentially in 8 MB chunks, computing SHA-256 while reading the source.
-  - Writes to a `.fujicull-partial` temp file, then runs `F_FULLFSYNC`.
-  - Reads the copy back with `F_NOCACHE` and compares hashes.
-  - Renames exclusively into place (`renamex_np RENAME_EXCL`).
-  - Then appends a `verified` entry to the ledger and runs `fsync` on it.
-  - Copies to Google Photos/ from the verified archive copy.
-- **Ledger:** stored in the card's session file. It records the chosen destination, the name mapping, and verified, tagged and deleted entries. A re-run replans from it. A final-named file without a ledger entry is adopted only if its hash matches.
-- **Archive removal** (DESIGN D6, R26): when a frame that was already archived is later rejected, its archive and Google Photos copies are moved to the SSD's Trash. This is recoverable, happens in the same confirmed step, *before* the card deletion, and only for files whose size and modification date still match their `verified` ledger entry.
-- **Deletion gate:** every Keep frame on the card must have verified copies, the card must not be read-only, and the user must confirm in a modal whose default button is Cancel. Before each `unlink`, the file's size and modification date are checked against the scan snapshot. Card files are never moved to the Trash.
+  - Copies one file at a time in 8 MB chunks, hashing (SHA-256) while reading the source.
+  - Writes to an `O_EXCL` partial file with `F_NOCACHE`, then runs `F_FULLFSYNC`.
+  - Reads the copy back uncached and compares hashes.
+  - Claims the final name with an `O_EXCL` placeholder and renames the partial over it. The rename only ever replaces FujiCull's own placeholder, which is safe on exFAT where `RENAME_EXCL` is unsupported.
+  - Runs `F_FULLFSYNC` on the directory, then records `verified`.
+  - All operations go through one directory descriptor whose volume UUID has been checked.
+  - Copies to Google Photos/ from the archive JPG verified in the same run.
+- **Ledger:** one append-only JSON-lines journal per card (`Ledger/<key>.jsonl`), with `F_FULLFSYNC` after every record and one record per file per operation (reserve, verified, tagged, trashed, deleted, released). The latest record for a file is authoritative. A torn tail is truncated, and any other corruption stops Apply and asks.
+- **Archive removal** (DESIGN D6, R26): only files with a `reserve` → `verified` chain in this card's ledger are eligible. Each file is checked by size and SHA-256 re-hash before it's moved to the SSD's Trash. This happens in the same confirmed step, before the card deletion.
+- **Deletion gate:** every Keep frame on the card must have verified archive copies that are still present (Google Photos copies excluded), every video must be verified, the card must not be read-only, and the user must confirm in a modal whose default button is Cancel. Before each `unlink`, the file's size and modification date are checked against the scan snapshot. Card files are never moved to the Trash.
 - **Cancellation:** unmounting either volume or any I/O error cancels the run. A sleep-prevention assertion is held during Apply.
+
+- **Hardening from two doubt-review rounds (2026-10-09):** decisions frozen during Apply; the source card re-identified before every read and delete; the archive resolved by volume UUID through one checked directory descriptor; locks; per-file journal records; all-or-nothing checks per frame; a gate that re-checks archive files on disk and never re-copies silently; `Google Photos/` treated as disposable. See DESIGN §5.7 SR6–SR24 and [the review](../reviews/2026-10-09-apply-doubt-review.md).
 
 ## Alternatives Considered
 

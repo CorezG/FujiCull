@@ -41,10 +41,10 @@ Assumptions A1–A4 in REQUIREMENTS.md are confirmed. These came up during desig
 - **D4. The "Undecided only" filter is live.** When I decide a frame, it leaves the filtered list and the next undecided frame appears. When the filter is on, auto-advance is implied.
 - **D5. 100% zoom means one image pixel per device pixel.** On the Air's Retina display, a 7728 × 5152 image therefore spans about 3× the screen width.
 - **D6. Rejecting an archived frame removes its archive copy too.** If a frame that an earlier Apply archived is later changed to Reject, the next Apply removes its archive RAF, archive JPG and Google Photos JPG, and deletes it from the card (R26, §5.7).
-  - Archive copies are **moved to the SSD's Trash**, so the removal can be recovered until the Trash is emptied. Card files are still deleted permanently.
-  - A file is removed only if the ledger shows FujiCull wrote it **and** its size and modification date still match what was verified. A file that has been edited or replaced is left alone and reported.
+  - Archive copies are **moved to the SSD's Trash**, so the removal can be recovered until the Trash is emptied. Card files are still deleted permanently. Only files FujiCull itself wrote for this card are eligible (SR9, SR18).
+  - A file is removed only if the ledger shows FujiCull wrote it **and** its size and SHA-256 still match what was verified (SR18). Mtime isn't used, because exFAT times can shift with the Mac's time zone. A file that has been edited or replaced is left alone and reported.
   - If an archived frame is changed back to **Undecided**, its archive copy is left as it is, because "undecided" means "don't touch".
-- **D7. The trip name and archive folder are fixed after the first Apply on a card.** Later runs reuse them, so a re-run can't scatter keepers across two folders.
+- **D7. Each card session remembers its trip folder.** Pre-flight pre-fills it on later runs, so re-runs don't scatter keepers by accident. You can still choose a different folder for **new** keepers, for example if you reused the card for a new trip without formatting. Every verified file records its own destination, so earlier copies are still found (SR9).
 
 ## 4. Architecture
 
@@ -87,12 +87,20 @@ Build order: `scan` → `session` → `persist` → `imaging` → `viewer` → `
 
 ### 5.1 Scanning and pairing (`scan`)
 
-- **Input** is a root URL: either a volume root or any folder (R1). If `<root>/DCIM` exists, scan only `DCIM/*` subfolders recursively. Otherwise scan the chosen folder recursively.
-- **Enumeration** uses `FileManager.enumerator` with `[.skipsHiddenFiles]` and pre-fetched keys `fileSize`, `contentModificationDate` and `isRegularFile`. It also explicitly skips `._*`, `.Trashes`, `.Spotlight-V100` and `.fseventsd` (R5). Only `.JPG`/`.JPEG` and `.RAF` files are kept, compared case-insensitively.
-- **Pairing** groups files by `(parent folder, uppercased base name)`. A group with one JPG and one RAF is a paired frame. A group with only one of the two is an orphan with `isUnpaired = true` (R4). If a group has duplicates that differ only in case (for example `a.jpg` and `A.JPG`), that is treated as a scan warning and both are surfaced as orphans. Unlikely on a camera card, but it's handled deterministically.
+- **Input** is a root URL: either a volume root or any folder (R1). On a volume with `DCIM/` at its root, the scan covers **the whole volume** apart from hidden and system entries (SR1). Otherwise it covers the chosen folder recursively.
+- **Enumeration** uses `FileManager.enumerator` with `[.skipsHiddenFiles]` and pre-fetched keys `fileSize`, `contentModificationDate` and `isRegularFile`. It also explicitly skips `._*`, `.Trashes`, `.Spotlight-V100`, `.fseventsd`, `System Volume Information` and Fuji's own folders (R5). Every remaining regular file goes into exactly one of three buckets:
+  - **Frames:** `.JPG`/`.JPEG` and `.RAF` files, compared case-insensitively, then paired (below).
+  - **Videos** (R27): `.MOV` and `.MP4` files, as `VideoItem`s.
+  - **Other files**: everything else, for example `.HIF` (HEIF) photos or `.WAV` voice memos. They aren't culled or archived in v1, but they're always listed in pre-flight and in the summary (SR13). Pre-flight shows a prominent warning if HEIF files are present, because FujiCull v1 culls JPGs only.
+- **Pairing** groups files by `(parent folder, case-folded base name)`.
+  - A group with exactly one JPG and one RAF is a paired frame.
+  - A group with exactly one of the two is an orphan with `isUnpaired = true` (R4).
+  - Any other group, such as duplicates that differ only in case or a `.JPG` next to a `.JPEG`, is split: each file becomes its own orphan frame, and its FrameID keeps the **exact original filename** so no two frames share an identity (SR2).
 - **Order** is by folder name, then filename, using a numeric-aware comparison (D1, ADR-004).
-- **Frame identity** is `FrameID = "<path relative to root>/<BASENAME>"`, for example `DCIM/102_FUJI/DSCF1234`. It stays stable across remounts and is the key for decisions and the ledger.
-- **Scan snapshot.** For each file, the scanner records `size` and `mtime`. Apply rechecks these before deleting (§5.7).
+- **Frame identity** (SR2):
+  - `FrameID` is the path **relative to the volume root** for any source on a removable volume, and relative to the chosen folder otherwise. Examples: `DCIM/102_FUJI/DSCF1234` for a pair, or `DCIM/102_FUJI/DSCF1234.JPG` for a split orphan. A card therefore yields the same FrameIDs however it was opened.
+  - A stored decision or ledger record belongs to a frame only if the FrameID **and the exact byte size of every file still present in it** match. Capture time must also match **when both sides have one**.
+- **Scan snapshot.** For each file, the scanner records `size` and `mtime`. Apply rescans the card when it starts, so its snapshot is never older than the run (SR16).
 - **Performance.** Listing ~4,000 directory entries on an exFAT card takes well under a second. No file contents are read during the scan.
 
 ```swift
@@ -125,15 +133,29 @@ public struct SourceFile: Sendable, Hashable {
 
 ### 5.3 Persistence (`persist`) — [ADR-005](decisions/ADR-005-session-persistence-json-per-card.md)
 
-- **Location:** `~/Library/Application Support/FujiCull/Sessions/<sessionID>.json`, with one file per card or folder.
-- **Session key** (R20):
-  - For a volume root: `volumeUUIDString`, or the volume identifier if there is no UUID. This needs checking on exFAT (spike S3).
-  - For a folder: the canonical path.
-  - Each session also stores a **file-list fingerprint**: the set of FrameIDs.
-- **Restore rule:** if the key matches and at least 50% of the stored FrameIDs are still present, restore. Missing frames are dropped. They are expected after Apply, because rejects were deleted. New frames are added as Undecided. If fewer than 50% are present, the card was probably reformatted, so start a new session and keep the old file.
-- **Contents:** the schema version, key, root path hint, decisions (only frames that aren't Undecided), cursor FrameID, filter flag, and the Apply ledger (§5.7). For 2,000 frames this is about 100–200 KB of JSON. That is more than the "a few KB" in R19, but still negligible.
-- **Writes** are debounced by 300 ms after a change and are atomic (`Data.write(options: .atomic)`). They are flushed immediately on quit, on source close and on unmount. Ledger updates during Apply are written synchronously with `fsync` (§5.7).
-- **The card is never written** during culling (R21). The `FileSystem` protocol used by Apply is the only code path with write or delete operations against the source.
+_Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-review.md) rounds. Rule numbers (SR…) are referenced by the tasks._
+
+- **Location:** for each card key, `~/Library/Application Support/FujiCull/` holds two files:
+  - `Sessions/<key>.json` holds the decisions, cursor and filter.
+  - `Ledger/<key>.jsonl` is the append-only Apply journal (§5.7).
+  - There is **one session per card**; there are never several side by side.
+- **Session key** (R20, SR1):
+  - A source on a removable volume, whether the volume root or a folder inside it, is keyed by the volume's `volumeUUIDString`.
+  - A folder on the internal disk is keyed by its canonical path.
+- **Lock** (SR3): while a source is open, FujiCull holds an exclusive lock (`O_EXLOCK` on `Locks/<key>.lock`). A second window or process can't open the same card.
+- **Restore** (SR2, SR4):
+  1. Match every stored decision to the scan by frame identity (SR2). Frames whose files the ledger shows as deleted don't count.
+  2. If every remaining frame matches, restore silently.
+  3. If the match is partial, show what matched, for example "1,204 of 1,873 frames match your last session on this card", and ask: **Resume** (keep matching decisions, drop the rest, add new frames as Undecided) or **Start fresh**.
+  4. On Start fresh, the old session and ledger move to `Archive/<key>-<date>/`. Their verified archive files stay where they are, and FujiCull never removes them later.
+  5. A session with no stored decisions always restores, so there's no divide-by-zero.
+- **Contents:** schema version, key, root path hint, decisions (only frames that aren't Undecided, each with its identity), cursor FrameID and filter flag. That's about 100–200 KB for 2,000 frames.
+- **Writes** (SR5):
+  - All session writes go through one `SessionStore` actor, which always serialises the latest state.
+  - Writes are debounced by 300 ms and atomic (temp file, `F_FULLFSYNC`, rename).
+  - They are flushed on quit, source close and unmount.
+  - The ledger is a separate file.
+- **The card is never written** during culling (R21). Only `ApplyExecutor` writes or deletes outside Application Support, which `scripts/check-boundaries.sh` enforces.
 
 ### 5.4 Preview pipeline (`imaging`) — [ADR-002](decisions/ADR-002-jpeg-first-preview-pipeline.md)
 
@@ -181,46 +203,124 @@ There are three tiers. Every read goes through one `CardReader` actor that serve
 
 ### 5.7 Apply (`apply`) — [ADR-003](decisions/ADR-003-journaled-copy-verify-delete.md)
 
-**Planner** (pure function). It takes the session, scan snapshot, metadata, ledger, archive root, trip name, and a listing of the destination folders. It returns an `ApplyPlan`:
+_Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-review.md) rounds. Rule numbers (SR…) are referenced by the tasks. The guiding principle: **FujiCull only ever removes files it can prove it wrote, or files on the card it was asked to delete. When in doubt it stops and asks, and never guesses.**_
 
-- **Destination:** `<SSD root>/<Trip name>/`, plus `Google Photos/` inside it, matching your existing flat archive (Q10). After the first run, the destination is fixed in the ledger (D7). If the folder already exists and isn't in this card's ledger, for example your own `Japan 2024/`, pre-flight asks before adding to it; the never-overwrite collision rule still applies inside it. The trip name is checked against exFAT's forbidden characters (`" * / : < > ? \ |`, and no trailing space or dot).
-- **Copy operations** are for every Keep frame that doesn't have a verified ledger entry. Each copies the RAF and JPG to the archive folder, and the JPG to `Google Photos/`. The Google Photos copy is made from the *verified archive copy*, not the card, so the card is read only once.
-- **Collision naming:** if `DSCF1234.JPG` or `DSCF1234.RAF` already exists in either destination folder, the planner picks the smallest `n ≥ 2` for which `DSCF1234-n.JPG`, `DSCF1234-n.RAF` and `Google Photos/DSCF1234-n.JPG` are all free. The pair always keeps matching names. The chosen names go into the ledger before copying, so a resumed run reuses them.
-- **Tag operations:** add the Finder tag "Favourite" to the archive RAF and JPG of a ♥ frame. The `Google Photos/` copy is never tagged (Q11). Remove the tag from files whose frame is no longer a favourite (R25).
-- **Delete operations:** every Reject frame that is still present on the card.
-- **Archive-removal operations** (D6): for every Reject frame that has `verified` ledger entries, remove its archive RAF, archive JPG and Google Photos JPG.
-- **Pre-flight facts:**
-  - Bytes needed: unverified keeper RAF + JPG, plus the Google Photos JPGs, plus a 1 GB margin.
-  - Counts for keep, ♥, reject and undecided.
-  - How many rejected frames will also be removed from the archive.
-  - A read-only flag if the card is locked (R6).
+**Before planning:**
 
-**Executor** (async, cancellable, sequential: one file at a time, because the card is the bottleneck):
+- **Freeze** (SR6). Apply is modal. From planning until the summary closes, culling commands are disabled.
+- **Same card** (SR16). Apply rescans the card. Before every file read and every delete, it checks that the source volume's UUID still equals the session key, and that the file's size and mtime still match the fresh snapshot. A mismatch stops the run. A card swapped mid-session is therefore caught.
+- **Archive identity** (SR7):
+  - The archive is remembered by **volume UUID**, and its mount point is looked up every run. If it isn't mounted, Apply stops.
+  - The executor opens the trip folder **once**, checks the UUID on that descriptor (`fstatfs`), and does every create, rename and unlink relative to it (`openat`, `renameatx_np`, `unlinkat`). Nothing can land on the internal disk.
+  - FujiCull only ever creates the trip folder, directly in the volume root, plus its `Google Photos/` and `Videos/` subfolders.
+- **Source rules** (SR8):
+  - Apply refuses to run if the source and the archive are on the same volume.
+  - Permanent deletion happens **only on a camera card**: a removable volume with `DCIM/` at its root.
+  - Any other source has its rejects moved to the Trash. If no Trash is available, deletion is refused.
+- **Archive lock** (SR3): an exclusive lock on the destination (archive UUID + folder name) is held for the whole run.
 
-1. **Copy and verify** each file:
-   1. Stream the source in 8 MB chunks while computing SHA-256 (CryptoKit) on the fly.
-   2. Write to `.<name>.fujicull-partial` in the destination folder, then `F_FULLFSYNC`.
-   3. Reopen the copy with `F_NOCACHE`, read it back, and hash it. The hashes must match (R22, step 3).
-   4. Set the destination's modification date to the source's.
-   5. Rename to the final name exclusively (`renamex_np(…, RENAME_EXCL)`), so an existing file is never overwritten.
-   6. Append `verified(frameID, role, dstName, size, sha256)` to the ledger and `fsync` it.
-   7. A mismatch, an I/O error or an EXCL failure stops the run. The partial file is deleted, and nothing is deleted from the card.
-2. **Tag** with `NSURL.setResourceValue(_:forKey: .tagNamesKey)`, merging with any existing tags. This is recorded in the ledger.
-3. **Gate.** Deletion is offered only if *every* Keep frame on the card has verified archive copies for both of its files and a verified Google Photos copy (R22). This includes frames verified in earlier runs. If the card is read-only, deletion is skipped and a notice is shown (R6).
-4. **Confirm.** A modal shows the frame count, file count and bytes, and says the deletion can't be undone. If any archive copies will also be removed, it adds a second line, for example "…and move 12 previously archived frames (36 files) from the archive to the SSD's Trash." **Cancel** is the default button. If the card is read-only, the modal covers archive removal only.
-5. **Remove archive copies** (D6). For each archive file of a rejected frame, check that its size and mtime still match the ledger's `verified` entry (otherwise skip it and report it). Then move it to the Trash with `FileManager.trashItem` and record it in the ledger. This happens *before* the card deletion, so the card copy still exists if anything fails here.
-6. **Delete from the card.** For each reject file, recheck that its `size` and `mtime` still match the scan snapshot (otherwise skip it and report it), then `unlink` it. Card files are never moved to the Trash. Each deletion is recorded in the ledger.
-7. **Summary:** copied, verified, tagged, removed from the archive, deleted, skipped and left on the card, with "Reveal in Finder" for the archive and Google Photos folders.
+**Planner** (pure; does no I/O beyond the listings it's given). It takes the session, the fresh snapshot, metadata, the ledger, the archive listing and the trip folder, and returns an `ApplyPlan`. Everything is planned **per file**. A frame's files are its archive RAF, archive JPG and Google Photos JPG; a video has one file (SR9).
+
+- **Destination** (Q10, D7): `<archive root>/<Trip name>/`, with `Google Photos/` and `Videos/` inside.
+  - Existing entries are always addressed by their **exact on-disk name** from the listing.
+  - Names are matched case-insensitively, without Unicode normalisation, as exFAT does. If more than one entry matches, Apply stops and asks (SR10).
+  - If the folder exists and isn't in this card's ledger, pre-flight asks before adding to it.
+  - Trip names are rejected if they:
+    - contain control characters or `" * / : < > ? \ |`;
+    - start or end with a space or dot;
+    - are `.`, `..`, `.Trashes`, `.fseventsd`, `.Spotlight-V100` or `System Volume Information`;
+    - are a Windows reserved name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9`, `LPT1`–`9`);
+    - are longer than 200 UTF-16 units.
+  - Existing folders are never renamed or reorganised.
+- **Copies** (SR9):
+  - One per Keep-frame archive file or video without a `verified` record whose source identity matches (SR2).
+  - A **Google Photos copy** is made only for a frame whose Google Photos file has never been verified. It's made from the archive JPG just verified **in the same run**, re-hashed against the card's SHA-256. `Google Photos/` is a disposable staging folder: once its copy has been verified, FujiCull never recreates it, never requires it, and never complains if it has gone.
+- **Names** (SR11):
+  - A frame keeps one name across all of its files.
+  - If the frame already has a `reserve` for that name, it **reuses** it, provided the name is still free or holds the frame's own reserved file.
+  - Otherwise the planner picks the smallest `n ≥ 2` free for all of the frame's remaining files. "Taken" means present in the listing, reserved by **another** frame, or allocated earlier in this plan.
+  - If some of a frame's files are verified under a name and another file can't get that name because a foreign file took it, the frame stops with a clear report, and the rest of the run continues.
+- **Tags** (SR12):
+  - "Favourite" is set on the archive RAF and JPG of every ♥ Keep frame.
+  - It's removed **only from files FujiCull tagged** (a `tagged` record), when their frame is Keep without ♥.
+  - Undecided frames and the Google Photos copy are never tagged. A file FujiCull creates is given exactly the tags FujiCull intends, which clears anything inherited from an orphaned `._` file.
+- **Card deletes:** every Reject frame still present on the card, unless the card is locked (R6).
+- **Archive removals** (D6, R26): the archive RAF and JPG of every Reject frame, but **only** files with a `reserve` → `verified` chain in this card's ledger whose source identity matches. Files from someone else, from another card, or from a started-fresh session are never eligible.
+  - This runs even when the card is locked. It's recorded, so it's never planned twice.
+  - The Google Photos copy is removed too if it's still present and unchanged. If it's missing, the RAF and JPG removal goes ahead regardless.
+- **Left on card, not archived** (SR13): Undecided frames and **other files**, listed in pre-flight and in the summary with a warning that formatting the card loses them.
+- **Space** (SR14): the bytes still to copy, each file rounded up to the volume's allocation size, plus one allocation unit per file for its `._` companion, plus the Google Photos copies, plus a 1 GB margin.
+
+**Ledger** (SR5, SR15): `Ledger/<key>.jsonl`, an append-only JSON-lines journal with `F_FULLFSYNC` after every record. **One record per file per operation, written immediately after that operation.**
+
+| Record | Holds |
+|---|---|
+| `destination` | Archive volume UUID, the folder's exact on-disk name |
+| `reserve` | Frame or video, file role, destination folder, final name, the partial's name. Written before the file is created. |
+| `verified` | As `reserve`, plus the source identity (path, size, mtime, capture time, SHA-256) and the destination's size and SHA-256. Written only after the data **and the rename** are durable. |
+| `tagged` / `untagged` | File |
+| `trashed` | File, with the `resultingItemURL` |
+| `deleted` | Card file |
+| `released` | A reservation abandoned during a sweep, so the name is free again |
+
+The **latest** record for a file is authoritative. When a journal is opened, a torn final line is truncated back to the last complete newline, then fsynced. A corrupt line anywhere else stops Apply and asks the user. The journal is never rewritten.
+
+**Executor** (async, cancellable, one file at a time):
+
+1. **Sweep.** Remove `.fujicull-partial` files that the ledger reserved but never verified, and append `released`. Any other `*.fujicull-partial` in the trip folder (a name pattern only FujiCull uses) is listed in pre-flight and removed after confirmation.
+2. **Copy and verify** each file:
+   1. Append `reserve`.
+   2. Create the partial with `O_CREAT | O_EXCL`, with `F_NOCACHE` set on the **write** descriptor.
+   3. Stream the source in 8 MB chunks, computing SHA-256 on the fly.
+   4. `F_FULLFSYNC` the partial.
+   5. Read it back through a new `F_NOCACHE` descriptor and compare hashes.
+   6. Set the destination's modification date to the source's.
+   7. **Claim the final name** with a zero-length placeholder created via `O_CREAT | O_EXCL`, then rename the partial over it. The rename only ever replaces FujiCull's own placeholder, so nothing else can be overwritten even on exFAT (SR10).
+   8. `F_FULLFSYNC` the directory, then `fstat` the final file.
+   9. Append `verified`.
+   - If the final name already holds a file and the ledger has a `reserve` for it (a crash after the rename), the file is hashed. It's recorded `verified` only if it matches.
+   - Any mismatch, I/O error or name conflict stops that frame and the run. Nothing is deleted anywhere.
+3. **Tag**, and append `tagged` or `untagged`.
+4. **Gate** (SR17). Deletion is offered only if:
+   - every Keep frame on the card has a `verified` archive RAF and JPG (for an orphan, the files it has);
+   - every video is `verified`;
+   - each of those files exists on the archive now, with its recorded size. If a file is missing or changed, Apply doesn't copy it again silently; it lists the file and offers **Copy again** (as a new file) or **Cancel**;
+   - if the trip folder itself is missing, Apply offers **Locate folder…** (re-checked by size and hash) or **Cancel**, and never recreates it silently.
+   - `Google Photos/` is not part of the gate.
+5. **Confirm.** A modal shows the counts, with an expandable list of every file to be deleted from the card or moved to the Trash (R26). Its wording matches the action ("cannot be undone" only for card deletion). **Cancel** is the default button.
+6. **Remove archive copies** (D6, SR18).
+   - Before each frame, check for cancellation and the archive's identity.
+   - Check **all** of the frame's eligible files first: each must exist with its recorded size and re-hash to its recorded SHA-256.
+   - Then move each one to the Trash and append `trashed` immediately after each move. Files already `trashed` count as done.
+   - If any check fails, skip the frame and report it.
+7. **Delete from the card** (SR19).
+   - Before each frame, check for cancellation and the identity of both volumes (SR16).
+   - Check **all** of the frame's files first: the decision must still be Reject, each file must match the snapshot, and each must be deletable (no `uchg` or read-only flag).
+   - Then delete each file and append `deleted` immediately after each one.
+   - If the second unlink of a pair fails anyway, the remaining file keeps its Reject decision (identity covers only the files still present) and is reported as "pair split, retry". Completed deletions are reported, never "undone".
+8. **Summary:**
+   - copied, verified, tagged;
+   - removed from the archive (with Trash paths), deleted from the card, skipped (with reasons);
+   - left on card, with its warning;
+   - "Reveal in Finder";
+   - an **Eject C&J Archive** button, recommended before unplugging the SSD (SR20).
+
+**Undo** (SR21): undo entries for frames whose files Apply deleted are dropped, because there's nothing left to undo. All other undo history is kept (R10).
 
 **Interruption** (R23):
 
-- `VolumeMonitor` listens for `NSWorkspace.willUnmountNotification` and `didUnmountNotification` on both volumes, and cancels the executor's `Task`.
-- Any I/O error has the same effect as a cancellation.
-- Cancellation is checked between chunks, so a run stops within about one chunk.
-- During Apply, a `ProcessInfo.beginActivity(.userInitiated + idleSystemSleepDisabled)` assertion stops the Mac from idle-sleeping in the middle of a copy.
-- **Resume:** the next Apply replans from the ledger. Verified files are skipped. A planned file whose final name exists but has no `verified` entry, because the app crashed between the rename and the ledger write, is hashed. If the hash matches, the file is adopted. Otherwise it is treated as a collision.
+- `VolumeMonitor` cancels the executor's `Task` when either volume is about to unmount or unmounts. Any I/O error does the same.
+- Cancellation is checked between copy chunks and before every frame in steps 6 and 7.
+- A `ProcessInfo` activity assertion stops the Mac from idle-sleeping during Apply.
+- **Resume** sweeps (step 1), then replans from the journal.
 
-**Throughput estimate:** keepers are typically about 30% of a 180 GB card, so about 55 GB at about 90 MB/s, which is roughly 10–11 minutes for the copy. The Google Photos copies are SSD to SSD, so they add about 1 minute. The progress bar shows bytes and an ETA.
+**Accepted trade-offs:**
+
+- **SR22: single read.** The source is hashed from a single read of the card. A reader that silently returns corrupted bytes, without an I/O error, would yield a "verified" copy of those bad bytes. USB and the SD bus both carry CRCs, so this is very unlikely, and a re-read would cost about 10 minutes per trip. It could become a "double-read" preference later.
+- **SR23: lost journal.** If the journal is lost, files already on the archive aren't recognised. A re-run copies them again under `-n` names, which costs duplicates but loses nothing, and they're never eligible for removal.
+- **SR24: time-zone change.** If the Mac's time zone changes between the Apply rescan and a delete, the card's mtimes shift and the frames are skipped with the reason "time zone changed; run Apply again". This fails safe.
+
+**Throughput estimate:** keepers are typically about 30% of a 180 GB card, so about 55 GB at about 90 MB/s, which is roughly 10–11 minutes for the copy. The Google Photos copies are SSD to SSD and add about 1 minute.
 
 ## 6. Tech stack
 
@@ -346,6 +446,7 @@ Coverage goal: every Apply branch in Core is exercised by at least one test. The
 | Q5 | Undo scope | **OK** (D3). |
 | Q6 | SSD format | **exFAT** ("C&J Archive", 2 TB, shared with Windows). See the [hardware probe](spikes/2026-10-09-hardware-probe.md). Follow-ups are Q10 and Q11. |
 | Q11 | Which copies get the Favourite tag | **Archive RAF and JPG only**, not the Google Photos copy, so a Finder search shows each favourite once. Requirements §4.6 step 4 amended. |
+| Q12 | Videos (`.MOV`) and other non-photo files on the card | **Copy videos to `<Trip name>/Videos/`** (R27): verified like photos, never deleted from the card. Other non-photo files are listed as left on card (SR13). |
 | Q10 | Archive folder layout | **Flat `<Trip name>/` at the SSD root**, matching the existing archive. Requirements §4.6 step 2 amended; A4 (folder date) superseded. |
 | Q7 | Command Line Tools only | **Yes.** |
 | Q8 | Undecided filter (D4) | **OK.** |
@@ -361,7 +462,7 @@ Coverage goal: every Apply branch in Core is exercised by at least one test. The
 | R11–R13 | §5.2, §5.5 |
 | R14–R18 | §5.5, §5.6 |
 | R19–R21 | §5.3 |
-| R22–R26 | §5.7 |
+| R22–R27 | §5.7 |
 | NFR open < 2 s | §5.1 (no content reads in scan), §5.4 (T0 for visible cells first) |
 | NFR next < 100 ms, holding → | §5.4 prefetch, key-repeat rule |
 | NFR zoom < 300 ms | §5.4, risk noted |

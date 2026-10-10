@@ -25,8 +25,10 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T2: SourceScanner — find, pair, order (R1–R5, D1)
 **Description:** Implement `Frame`, `FrameID`, `SourceFile` and `SourceScanner` as in §5.1. It scans `DCIM/*` (or the chosen folder), pairs files case-insensitively by folder and base name, flags orphans, skips junk, and orders by folder then filename (numeric-aware). It also records a size and mtime snapshot for each file.
+**Safety rules:** SR1 (whole-volume scan; frames, videos, other files), SR2 (FrameID relative to volume root; split orphans keep exact filenames).
 **Acceptance:**
 - [ ] Tests cover: pairs, JPG-only and RAF-only orphans, mixed case, `._*` / `.Trashes` / `.Spotlight-V100` / `.fseventsd` / non-image files ignored, a counter wrap across `100_FUJI` → `101_FUJI`, a non-DCIM folder, and duplicates that differ only in case.
+- [ ] `.MOV`/`.MP4` files (any case) come back as video items, not frames, and other non-photo files come back in an "other files" list (R5, R27).
 - [ ] A 2,000-pair synthetic tree scans in under 200 ms on this Mac (measured in a test).
 **Verify:** `make test`
 **Depends on:** T1
@@ -34,7 +36,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Scope:** M
 
 ### - [ ] T3: Spikes S3 + S4 — card identity and speed _(needs your SD card and reader)_
-**Description:** A throwaway `swift` script, kept in `scripts/spikes/`. It checks whether the card reports a stable `volumeUUIDString` across remounts, whether the lock switch gives `volumeIsReadOnly`, the sequential read speed, and the T1 (2560 px) and T2 (full) decode times for X-T50 JPGs.
+**Description:** A throwaway `swift` script, kept in `scripts/spikes/`. Also **format the card in the camera** (after it's backed up and archived) and check whether its `volumeUUIDString` changes; SR2 and SR3 protect either way, but the result goes in the write-up. It checks whether the card reports a stable `volumeUUIDString` across remounts, whether the lock switch gives `volumeIsReadOnly`, the sequential read speed, and the T1 (2560 px) and T2 (full) decode times for X-T50 JPGs.
 **Acceptance:**
 - [ ] Results are written up in `docs/spikes/S3-S4.md` with numbers.
 - [ ] DESIGN §5.3 and §5.4 are updated if anything differs from the assumptions.
@@ -108,6 +110,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T9: SessionStore — auto-save, restore, reconcile (R19–R21, ADR-005)
 **Description:** A `Codable` `SessionFile` (schemaVersion, key, decisions that aren't Undecided, cursor, filter, ledger placeholder). `SessionKey` derivation: volume UUID, then volume identifier, then canonical path. The restore rule: at least 50% FrameID overlap, missing frames dropped, new frames added as Undecided. Writes are debounced to 300 ms and atomic, and flushed on quit and unmount.
+**Safety rules:** SR1–SR5 (one session per card key, lock while open, identity-based restore with a Resume / Start fresh prompt, single writer actor with `F_FULLFSYNC`). Tests: reformatted card with reused DSCF names → prompt; normal post-Apply card restores silently; card opened as volume vs `DCIM` folder → same session.
 **Acceptance:**
 - [ ] Tests cover: round trip, restore after rejects are deleted, new frames appearing, below-50% overlap giving a new session with the old file kept, and a corrupt file giving a new session with the corrupt file renamed `.bad`.
 - [ ] No code path writes inside the source root (asserted in tests).
@@ -202,6 +205,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - set the modification time
 - rename with `RENAME_EXCL`, falling back to check-then-rename where it's unsupported (exFAT)
 - support cancellation between chunks
+**Safety rules:** SR7 (all I/O via one `fstatfs`-checked directory descriptor), SR10 (`O_EXCL` placeholder claims the final name; rename only over our own placeholder), write-side `F_NOCACHE`, directory `F_FULLFSYNC` before `verified`.
 **Acceptance:**
 - [ ] Each injected fault (a write error at chunk N, a corrupted read-back, cancellation, the destination already existing) leaves no final file and no leftover `.partial` file, and returns a typed error.
 - [ ] A successful copy has a matching hash and mtime.
@@ -212,6 +216,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T17: Ledger model, stored in the session
 **Description:** `Ledger` holds the destination folder (fixed after the first run, D7), the per-frame name mapping, and entries for verified, tagged, archive-removed and deleted files (with size, mtime and sha256). It is stored in `SessionFile`. Ledger updates are written synchronously with `fsync`.
+**Safety rules:** SR5, SR15 (separate per-card JSONL journal, one record per file per operation, latest record authoritative, torn tail truncated, mid-file corruption stops and asks, `released` records).
 **Acceptance:**
 - [ ] Round-trip tests pass.
 - [ ] Ledger writes survive a simulated crash: the write is atomic, so after a kill the file holds either the old or the new ledger.
@@ -230,6 +235,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - archive removals
 - the space calculation (+1 GB margin)
 - pre-flight facts (counts, read-only flag, the R22 gate state)
+**Safety rules:** SR8–SR14 (per-file planning; exact on-disk names, case-insensitive without normalisation, ambiguity stops; own-reservation reuse and joint re-allocation; Google Photos disposable; tags only on files we tagged; removal only for `reserve`→`verified` chains; left-on-card list incl. other files; cluster-rounded space incl. `._`), R27 videos.
 **Acceptance:**
 - [ ] Tests cover: first run; a re-run after deciding the Undecided frames; Keep→Reject after archiving (archive removal planned); Keep→Undecided after archiving (nothing planned); favourite added and removed; collisions (including one only in `Google Photos/`); insufficient space; a read-only card; and that Undecided frames are never touched.
 **Verify:** `make test`
@@ -239,6 +245,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T19: ApplyExecutor, part 1 — copy, verify, tag, resume
 **Description:** Execute a plan's copy operations one after another with `safeCopy`. The Google Photos copy is made from the verified archive file. Each verified file is recorded in the ledger. Finder tags are applied through `NSURL` resource values, merged with existing tags. The executor reports progress (bytes and ETA). It is cancellable. On resume, a final-named file without a ledger entry is adopted only if its hash matches.
+**Safety rules:** SR3 (archive lock), SR15 (records written after each operation), executor steps 1–3 (sweep ledger-reserved partials; crash-after-rename recovery by hash).
 **Acceptance:**
 - [ ] Fault injection at every step gives a re-run that converges to the same final state, without duplicates or `-2` names created by resuming.
 - [ ] Tags are verified on the archive RAF and JPG after the run, and the `Google Photos/` copy has no Favourite tag (Q11).
@@ -253,6 +260,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - After a confirmation callback, move archive files of frames rejected after archiving to the Trash. Each file must match its ledger size and mtime.
 - Then `unlink` card rejects after rechecking each file's size and mtime against the scan snapshot.
 - Record everything in the ledger, and produce the summary model.
+**Safety rules:** SR16 (source volume + file identity before every read/delete), SR17 (gate: archive files present with recorded size, Google Photos excluded, Copy again / Locate folder, never silent re-copy), SR18 (archive removal: check all, trash each, record each; runs even on a locked card), SR19 (card delete: Reject still, snapshot match, deletable flags; split-pair handling), SR8 (Trash for non-card sources).
 **Acceptance:**
 - [ ] In every fault test from T16/T19, **zero files are deleted from the card or the archive**.
 - [ ] A card file changed since the scan is skipped and reported.
@@ -280,6 +288,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - the space check, with a clear abort message
 - the summary (keep, ♥, reject, undecided, and archive removals)
 - a warning about Undecided frames
+**Safety rules:** SR6 (decisions frozen while the sheet is open), SR7 (archive chosen and remembered by volume UUID), SR13 (left-on-card list incl. HEIF warning), trip-name validation list (§5.7), "folder exists" prompt.
 **Acceptance:**
 - [ ] All the pre-flight cases from the T18 tests are visible in the UI.
 - [ ] The run can't start when there isn't enough space.
@@ -295,6 +304,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 - A summary with "Reveal in Finder" for the archive and Google Photos folders.
 - `VolumeMonitor` cancels the run when either volume unmounts.
 - A `ProcessInfo` activity assertion is held during the run.
+**Safety rules:** SR20 (Eject archive button), SR21 (undo entries dropped only for deleted frames); confirmation lists every file and its wording matches the action (R26).
 **Acceptance:**
 - [ ] Pulling the SSD mid-copy (tested on a USB stick) stops the run, deletes nothing, and a re-run resumes.
 - [ ] Return on the confirmation modal cancels.
