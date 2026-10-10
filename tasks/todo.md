@@ -45,12 +45,12 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `scripts/spikes/card_probe.swift`, `docs/spikes/S3-S4.md`
 **Scope:** S
 
-### - [ ] T4: JPEG segment parser and T0 thumbnail + EXIF basics
+### - [x] T4: JPEG segment parser and T0 thumbnail + EXIF basics
 **Description:** In Core, a pure `JPEGSegments` parser that finds APP1 (EXIF) and the IFD1 thumbnail within the first 64 KB. In Imaging, a `ThumbnailLoader` that turns those bytes into a `CGImage` plus `ExifSummary` (shutter, aperture, ISO, focal length, DateTimeOriginal). Fixtures are synthetic JPEGs written with `CGImageDestination` and an embedded thumbnail and EXIF.
 **Acceptance:**
-- [ ] The parser handles a missing thumbnail, an APP1 that isn't in the first 64 KB (it returns a "need more bytes" result), and truncated or corrupt input without crashing.
-- [ ] `ExifSummary` round-trips the values written into the synthetic fixtures.
-- [ ] The EXIF Orientation tag is read, and T0 thumbnails are rotated to match. The X-T50 stores the IFD1 thumbnail unrotated (160 × 120) even for portrait frames, so without this the filmstrip and grid show portraits on their side. This is tested with a portrait frame (Orientation 6 and 8 both occur on the card).
+- [x] The parser handles a missing thumbnail, an APP1 that isn't in the first 64 KB (it returns a "need more bytes" result), and truncated or corrupt input without crashing.
+- [x] `ExifSummary` round-trips the values written into the synthetic fixtures.
+- [x] The EXIF Orientation tag is read, and T0 thumbnails are rotated to match. The X-T50 stores the IFD1 thumbnail unrotated (160 × 120) even for portrait frames, so without this the filmstrip and grid show portraits on their side. This is tested with a portrait frame (Orientation 6 and 8 both occur on the card).
 **Verify:** `make test`
 **Depends on:** T1
 **Files:** `Sources/FujiCullCore/Metadata/JPEGSegments.swift`, `Sources/FujiCullImaging/{ThumbnailLoader,ExifReader}.swift`, `Tests/FujiCullCoreTests/JPEGSegmentsTests.swift`, `Tests/FujiCullImagingTests/ThumbnailLoaderTests.swift`

@@ -73,3 +73,7 @@ and tests in T4, T13 and T14._
 
 - **Every file this Mac writes to the exFAT SSD gets a 4 KB `._` file**, tagged or not. macOS adds a `com.apple.provenance` attribute to new files, and exFAT stores attributes in AppleDouble files. That attribute **can't be removed**: `xattr -d` returns 0 but the attribute stays. Your existing archive already has these files, for example 997 of them in `Japan 2024/`. Finder tags therefore add no extra files. `FileManager.contentsOfDirectory` hides `._` files, but `ls -a` and Windows show them.
 - Consequence for Q11: tagging the Google Photos copies costs nothing extra. A clean upload folder without `._` files isn't possible on this exFAT SSD whatever FujiCull does, so in the browser upload you'd select the photos rather than the whole folder.
+
+## T0 pass over the whole card (measured during T4)
+- `ThumbnailLoader` (optimised build) over all **2,091 JPGs** on Fuji SD in the chosen reader: every file gave a thumbnail and full EXIF, with no failures. It took **4.5 s in total**, about 2 ms per header, against the 10–30 s estimated in DESIGN §5.4.
+- Orientation mix on this card: 507 × 1 (landscape), 833 × 6, 745 × 8, 6 × 3. Every portrait thumbnail came out portrait after rotation.
