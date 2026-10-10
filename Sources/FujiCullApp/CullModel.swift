@@ -273,6 +273,8 @@ final class CullModel {
         guard phase == .browsing else { return }
         let started = ContinuousClock.now
         defer { timing.mainMs = Self.milliseconds(since: started) }
+        // Keys can arrive as menu shortcuts or in the view, so take the time from the event itself.
+        if let event = NSApp.currentEvent, event.type == .keyDown { timing.keyUptime = event.timestamp }
         switch action {
         case .cull(let command):
             let before = (cursor: session.cursor, frame: session.currentFrameID, mark: currentMark)
@@ -316,11 +318,6 @@ final class CullModel {
 
     func toggleTimings() {
         showsTimings.toggle()
-    }
-
-    /// Records when a keypress happened (the event's own timestamp), so key-to-screen time includes everything.
-    func noteKey(at uptime: TimeInterval) {
-        timing.keyUptime = uptime
     }
 
     /// Called by the viewer each time it puts a new image on screen.

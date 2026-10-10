@@ -13,6 +13,9 @@ struct FilmstripView: NSViewRepresentable {
         case grid
     }
 
+    /// Strip height: cell plus 8 pt insets, with 12 pt of slack so the layout is always valid.
+    static let stripHeight = FilmstripCell.height + 28
+
     let model: CullModel
     var style: Style = .strip
     /// Grid only: the keymap handler (returns true when the key was used).
@@ -30,7 +33,9 @@ struct FilmstripView: NSViewRepresentable {
             layout.scrollDirection = .horizontal
             layout.itemSize = NSSize(width: FilmstripCell.width, height: FilmstripCell.height)
             layout.minimumLineSpacing = 6
-            layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+            // Cells must fit inside the strip with room to spare: an item taller than the strip minus its
+            // insets makes AppKit log a layout warning on every pass (695 in 30 minutes), costing main-thread time.
+            layout.sectionInset = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         case .grid:
             layout.scrollDirection = .vertical
             layout.itemSize = NSSize(width: 184, height: 138)
@@ -57,6 +62,8 @@ struct FilmstripView: NSViewRepresentable {
         scroll.hasVerticalScroller = style == .grid
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
         return scroll
     }
 

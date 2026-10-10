@@ -95,7 +95,7 @@ struct BrowseView: View {
             viewer
             if !model.frames.isEmpty {
                 FilmstripView(model: model, session: model.session, thumbnailRevision: model.thumbnailRevision)
-                    .frame(height: FilmstripCell.height + 24)
+                    .frame(height: FilmstripView.stripHeight)
             }
         }
     }
@@ -145,7 +145,6 @@ struct BrowseView: View {
             shift: flags.contains(.shift), command: flags.contains(.command), control: flags.contains(.control),
             option: flags.contains(.option))
         guard let action = KeyMap.action(for: press) else { return false }
-        model.noteKey(at: event.timestamp)
         if action == .fitToWindow, !model.canPerform(action) { return false }
         model.perform(action)
         return true
