@@ -3,3 +3,8 @@ Sample Images/
 .build/
 build/
 *.profraw
+
+# Locally installed agent skills: each person installs their own (the graphify skill stays tracked).
+.agents/
+.claude/skills/
+skills-lock.json
