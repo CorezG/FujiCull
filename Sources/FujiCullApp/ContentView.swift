@@ -105,6 +105,7 @@ struct BrowseView: View {
             ViewerRepresentable(
                 image: model.currentImage, zoomImage: model.zoomImage, zoomScale: model.zoomScale,
                 pixelSize: model.currentPixelSize, onZoom: { model.setZoom($0) },
+                onImageShown: { model.imageShown() },
                 dimmed: model.currentMark.decision == .reject, onKey: handle)
             if let frame = model.currentFrame {
                 StatusBar(
@@ -126,6 +127,14 @@ struct BrowseView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 12)
             }
             DecisionFlash(flash: model.flash)
+            if model.showsTimings {
+                Text(model.timingText.isEmpty ? "Timings: move to another photo" : model.timingText)
+                    .font(.system(size: 11, design: .monospaced))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(12)
+            }
         }
     }
 
@@ -136,6 +145,7 @@ struct BrowseView: View {
             shift: flags.contains(.shift), command: flags.contains(.command), control: flags.contains(.control),
             option: flags.contains(.option))
         guard let action = KeyMap.action(for: press) else { return false }
+        model.noteKey(at: event.timestamp)
         if action == .fitToWindow, !model.canPerform(action) { return false }
         model.perform(action)
         return true

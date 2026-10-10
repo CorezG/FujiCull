@@ -100,6 +100,8 @@ final class FilmstripCoordinator: NSObject, NSCollectionViewDataSource {
 
     func refresh(session: CullSession, thumbnailRevision: Int) {
         guard let collection else { return }
+        let started = ContinuousClock.now
+        defer { model.lastStripRefreshMs = CullModel.milliseconds(since: started) }
         if session.frameIDs.count != shownCount {
             shownCount = session.frameIDs.count
             shownCursor = -1

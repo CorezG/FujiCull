@@ -2,6 +2,7 @@ import AppKit
 import FujiCullCore
 import FujiCullImaging
 import Observation
+import os
 
 /// The open source, the cursor and the image on screen. Drives every view; all state changes happen here
 /// on the main actor, and every card read goes through one `CardReader` (DESIGN §5.4, §5.5).
@@ -44,6 +45,9 @@ final class CullModel {
     private(set) var zoomImage: CGImage?
     /// Bumped (at most every 100 ms) as the background pass brings in thumbnails, so the filmstrip refreshes.
     private(set) var thumbnailRevision = 0
+    /// Debug timing readout (View > Show Timings, T15): how long each move takes to reach the screen.
+    private(set) var showsTimings = false
+    private(set) var timingText = ""
 
     @ObservationIgnored private var identityBase: URL?
     @ObservationIgnored private var sourceVolume: URL?
@@ -63,6 +67,9 @@ final class CullModel {
     @ObservationIgnored private var headers: [FrameID: ThumbnailHeader] = [:]
     @ObservationIgnored private var metadataTask: Task<Void, Never>?
     @ObservationIgnored private var thumbnailRefreshScheduled = false
+    @ObservationIgnored private var timing = MoveTiming()
+    @ObservationIgnored var lastStripRefreshMs = 0.0
+    private static let timingLog = Logger(subsystem: "com.github.corezg.FujiCull", category: "timing")
     /// Bumped whenever a source opens or closes, so results that arrive late are dropped.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -263,6 +270,8 @@ final class CullModel {
     /// The single entry point for keys and menu items (ADR-006), so each fires exactly once.
     func perform(_ action: KeyAction) {
         guard phase == .browsing else { return }
+        let started = ContinuousClock.now
+        defer { timing.mainMs = Self.milliseconds(since: started) }
         switch action {
         case .cull(let command):
             let before = (cursor: session.cursor, frame: session.currentFrameID, mark: currentMark)
@@ -278,7 +287,10 @@ final class CullModel {
             {
                 flash(for: command, mark: session.mark(at: index))
             }
-            if session.cursor != before.cursor || session.currentFrameID != before.frame { showCurrent() }
+            if session.cursor != before.cursor || session.currentFrameID != before.frame {
+                timing.start(frame: session.currentFrameID)
+                showCurrent()
+            }
             saveSoon()
         case .fitToWindow:
             setZoom(nil)
@@ -297,6 +309,44 @@ final class CullModel {
             default: showsExif.toggle()
             }
         }
+    }
+
+    // MARK: Timing (T15)
+
+    func toggleTimings() {
+        showsTimings.toggle()
+    }
+
+    /// Records when a keypress happened (the event's own timestamp), so key-to-screen time includes everything.
+    func noteKey(at uptime: TimeInterval) {
+        timing.keyUptime = uptime
+    }
+
+    /// Called by the viewer each time it puts a new image on screen.
+    func imageShown() {
+        guard let frame = currentFrame?.id, timing.frame == frame, let key = timing.keyUptime else { return }
+        let ms = (ProcessInfo.processInfo.systemUptime - key) * 1000
+        if timing.photoMs == nil {
+            timing.photoMs = ms
+            timing.wasPreloaded = currentIsDisplayQuality
+        }
+        if currentIsDisplayQuality, timing.sharpMs == nil {
+            timing.sharpMs = ms
+            let photo = Int(timing.photoMs ?? ms)
+            let sharp = Int(ms)
+            let source = timing.wasPreloaded ? "preloaded" : "loaded"
+            let main = String(format: "%.1f", timing.mainMs)
+            let strip = String(format: "%.1f", lastStripRefreshMs)
+            timingText = "key→photo \(photo) ms · sharp \(sharp) ms (\(source)) · main \(main) ms · strip \(strip) ms"
+            Self.timingLog.info(
+                "move \(frame.rawValue, privacy: .public): photo \(photo, privacy: .public) ms, sharp \(sharp, privacy: .public) ms, \(source, privacy: .public), main \(main, privacy: .public) ms, strip \(strip, privacy: .public) ms"
+            )
+        }
+    }
+
+    static func milliseconds(since start: ContinuousClock.Instant) -> Double {
+        let elapsed = ContinuousClock.now - start
+        return Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
     }
 
     /// Sets the zoom from Return, the scroll wheel or a pinch. Full-resolution images load only while zoomed
@@ -549,5 +599,22 @@ final class CullModel {
             return volumeName
         }
         return url.lastPathComponent
+    }
+}
+
+/// One move's timings, for the debug readout.
+private struct MoveTiming {
+    var frame: FrameID?
+    var keyUptime: TimeInterval?
+    var photoMs: Double?
+    var sharpMs: Double?
+    var wasPreloaded = false
+    var mainMs = 0.0
+
+    mutating func start(frame: FrameID?) {
+        self.frame = frame
+        photoMs = nil
+        sharpMs = nil
+        wasPreloaded = false
     }
 }

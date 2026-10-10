@@ -42,6 +42,8 @@ struct FujiCullApp: App {
                 item("Fit to Window", .fitToWindow, .escape)
                 item("Grid", .toggleGrid, "g")
                 item("Show EXIF", .toggleExif, "i")
+                Button(model.showsTimings ? "Hide Timings" : "Show Timings") { model.toggleTimings() }
+                    .keyboardShortcut("t", modifiers: [.command, .option])
                 Divider()
             }
         }

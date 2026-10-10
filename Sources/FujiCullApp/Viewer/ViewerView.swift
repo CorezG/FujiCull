@@ -133,6 +133,8 @@ struct ViewerRepresentable: NSViewRepresentable {
     var zoomScale: CGFloat?
     var pixelSize: CGSize?
     var onZoom: ((CGFloat?) -> Void)?
+    /// Called after a new image is put on screen (timing readout, T15).
+    var onImageShown: (() -> Void)?
     let dimmed: Bool
     let onKey: (NSEvent) -> Bool
 
@@ -144,7 +146,10 @@ struct ViewerRepresentable: NSViewRepresentable {
 
     func updateNSView(_ view: ViewerNSView, context: Context) {
         view.onKey = onKey
-        if view.image !== image { view.image = image }
+        if view.image !== image {
+            view.image = image
+            onImageShown?()
+        }
         if view.zoomImage !== zoomImage { view.zoomImage = zoomImage }
         view.onZoom = onZoom
         view.pixelSize = pixelSize
