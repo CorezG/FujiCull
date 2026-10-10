@@ -20,7 +20,9 @@ hits=$(
   # 2. Imaging has no UI.
   scan Sources/FujiCullImaging '^\s*import\s+(AppKit|SwiftUI|Cocoa)\b' imaging-imports-ui
   # 3. Only the Apply engine may delete, trash, move or rename files.
-  scan Sources '(removeItem|trashItem|moveItem|replaceItemAt|\bunlink\(|\bremove\(|\brename\(|renamex_np|removefile|\brmdir\()' destructive-outside-apply 'Sources/FujiCullCore/Apply/'
+  # C's remove() deletes a path; collection methods like cache.remove(key) or pending.remove(at:) don't, so only
+  # a bare or module-qualified remove( whose argument mentions a path counts.
+  scan Sources '(removeItem|trashItem|moveItem|replaceItemAt|\bunlink\(|(^|[^.A-Za-z0-9_]|Darwin\.|Foundation\.)remove\([^)]*[Pp]ath|\brename\(|renamex_np|removefile|\brmdir\()' destructive-outside-apply 'Sources/FujiCullCore/Apply/'
   # 4. Only Apply and session persistence may write files.
   scan Sources '(\.write\(to:|createFile\(|forWritingTo|forUpdating|\bopen\(.*O_(WRONLY|RDWR|CREAT))' write-outside-apply-or-persist 'Sources/FujiCullCore/(Apply|Persist)/'
 )

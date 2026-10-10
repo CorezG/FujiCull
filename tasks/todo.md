@@ -56,11 +56,11 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 **Files:** `Sources/FujiCullCore/Metadata/JPEGSegments.swift`, `Sources/FujiCullImaging/{ThumbnailLoader,ExifReader}.swift`, `Tests/FujiCullCoreTests/JPEGSegmentsTests.swift`, `Tests/FujiCullImagingTests/ThumbnailLoaderTests.swift`
 **Scope:** M
 
-### - [ ] T5: CardReader actor, T1 display decode and memory cache (ADR-002)
+### - [x] T5: CardReader actor, T1 display decode and memory cache (ADR-002)
 **Description:** A `CardReader` actor that serves read requests one at a time from a priority queue (current > +1…+3 > −1 > thumbnails > background) and cancels stale requests when the cursor moves. A `PreviewPipeline` that decodes T1 downsampled to a given pixel size. A `PreviewCache` (an LRU sized in bytes).
 **Acceptance:**
-- [ ] Tests with a fake byte source show priority ordering, that cancelled requests never complete, and that the cache evicts by byte budget.
-- [ ] There are no Swift 6 concurrency warnings.
+- [x] Tests with a fake byte source show priority ordering, that cancelled requests never complete, and that the cache evicts by byte budget.
+- [x] There are no Swift 6 concurrency warnings.
 **Verify:** `make test`
 **Depends on:** T4
 **Files:** `Sources/FujiCullImaging/{CardReader,PreviewPipeline,PreviewCache}.swift`, `Tests/FujiCullImagingTests/CardReaderTests.swift`
@@ -68,6 +68,7 @@ Section references (§) are to [docs/DESIGN.md](../docs/DESIGN.md).
 
 ### - [ ] T6: Open a source and browse with ← →
 **Description:** File ▸ Open (any folder) and auto-detection of a mounted volume with `DCIM/*_FUJI`. A `ViewerView` (layer-backed `NSView`, `keyDown`) shows T1, with T0 as a placeholder, and prefetches +3/−1. ← and → move between frames. The overlay is just the filename and `n / total` for now.
+**Note from T5:** T1 currently decodes with `kCGImageSourceThumbnailMaxPixelSize` (about 90 ms at size M after the read). Try `kCGImageSourceSubsampleFactor` (JPEG DCT half-size decode) if browsing feels slow, and keep T1 near 17 MB per frame for the cache budget.
 **Acceptance:**
 - [ ] Opening a folder copy of a real card shows the first image in under 2 s.
 - [ ] ← and → move between frames and the prefetch makes them feel instant at normal pace.
