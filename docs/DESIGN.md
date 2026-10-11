@@ -220,7 +220,7 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
   - The archive is remembered by **volume UUID**, and its mount point is looked up every run. If it isn't mounted, Apply stops.
   - The executor opens each destination folder **once**, reads the volume UUID from that descriptor with `fgetattrlist(ATTR_VOL_UUID)`, and does every create, rename and unlink relative to it (`openat`, `renameat`, `unlinkat`). Nothing can land on the internal disk.
   - Two operations take a path and can't be descriptor-relative: Finder tags and the move to the Trash. Immediately before each one, the executor re-reads the descriptor's UUID and checks that the path names the same file the descriptor sees (same device and file number). The remaining window is an accepted trade-off (below).
-  - FujiCull only ever creates the trip folder, directly in the volume root, plus its `Google Photos/` and `Videos/` subfolders.
+  - FujiCull only ever creates the trip folder, directly in the volume root, plus its `RAW/`, `JPG/`, `Google Photos/` and `Videos/` subfolders.
 - **Source rules** (SR8):
   - Apply refuses to run if the source and the archive are on the same volume.
   - Terms, as measured: a volume is **external** when `volumeIsInternal` is false. A **camera card** is an external volume that reports `volumeIsRemovable` and has `DCIM/` at its root with at least one `NNN_FUJI` folder. The owner's reader reports SD cards as removable; the USB SSD reports not removable.
@@ -230,7 +230,7 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
 
 **Planner** (pure; does no I/O beyond the listings it's given). It takes the session, the fresh snapshot, metadata, the ledger **after recovery** (executor step 1), the archive listings with each owned file's current tags, and the trip folder, and returns an `ApplyPlan`. Everything is planned **per file**. A frame's files are its archive RAF, archive JPG and Google Photos JPG; a video has one file (SR9).
 
-- **Destinations** (Q10, D7): `<archive root>/<Trip name>/`, with `Google Photos/` and `Videos/` inside.
+- **Destinations** (Q10, D7): `<archive root>/<Trip name>/`, with `RAW/`, `JPG/`, `Google Photos/` and `Videos/` inside (`ArchiveLayout`). RAF files go to `RAW/`, JPGs to `JPG/`. _Since 2026-10-11, at the owner's request. Earlier runs put RAF and JPG directly in the trip folder; their journal records name that location, so those files are still found, tagged and removed where they are, and are never moved._
   - Every `reserve` and `verified` record names its destination: the archive volume UUID and the folder's exact on-disk name. New copies go to the folder chosen in pre-flight. Final checks and archive removals address each file in its **recorded** destination, so keepers filed under an earlier folder are still found.
   - **Pre-flight resolves every destination the plan refers to before anything is copied.** A recorded folder that is missing gets **Locate folder…** (accepted only if the recorded files are there, by size and hash) or **Cancel**. A recorded volume that isn't mounted is named; new keepers can still be copied, but card deletion isn't offered.
   - The chosen folder is created only when the volume says no entry of that name exists: `mkdirat`, and "already exists" means stop and ask. If the folder exists and isn't in this card's ledger, pre-flight asks before adding to it.
@@ -250,7 +250,7 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
   - A **Google Photos copy** is planned for a Keep frame whose Google Photos file has no `verified` record newer than its archive JPG's. It's made from the archive JPG. The bytes are hashed as they stream and must equal the SHA-256 recorded from the card; if they don't, no copy is made and the frame is reported.
   - `Google Photos/` is a disposable staging folder: once a copy has been verified, FujiCull never recreates it (unless the frame's archive JPG is itself copied again), never requires it, and never complains if it has gone.
 - **Names** (SR11):
-  - A frame keeps one name across all of its files.
+  - A frame keeps one name across all of its files, each in its own folder. A name is checked in the folder the file goes to: `RAW/` for the RAF, `JPG/` for the JPG, `Google Photos/` for the staging copy.
   - If the frame already has a `reserve` for that name, it **reuses** it, provided the name is still free.
   - Otherwise the planner picks the smallest `n ≥ 2` free for all of the frame's remaining files. "Taken" means present in the listing, reserved by **another** frame, or allocated earlier in this plan.
 - **Re-homing** (SR26). A frame can't keep one name when:

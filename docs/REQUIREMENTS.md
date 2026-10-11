@@ -97,10 +97,12 @@ Apply runs as an ordered, safe sequence:
    - Check SSD free space ≥ size of keepers; abort with a clear message otherwise.
    - Show summary: N keep (♥ M), N reject, N undecided.
    - If any frames are Undecided: warn — they will be **left on the card untouched**.
-2. **Copy keepers** (RAF + JPG) to `<SSD>/<Trip name>/`, a flat folder at the root of the
-   SSD that matches the existing archive (`Japan 2024/`, `Vancouver '26/`), and copy keeper
-   JPGs to `<SSD>/<Trip name>/Google Photos/`. _Amended 2026-10-09; was
-   `FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`._
+2. **Copy keepers** into `<SSD>/<Trip name>/`, a flat folder at the root of the SSD that matches the
+   existing archive (`Japan 2024/`, `Vancouver '26/`). Inside it, each kind of file has its own folder:
+   RAF files in `RAW/`, JPGs in `JPG/`, and a second copy of the keeper JPGs in `Google Photos/` for
+   uploading. _Amended 2026-10-09 (was `FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`) and 2026-10-11
+   (RAF and JPG used to sit together directly in the trip folder; files archived that way stay where
+   they are and are still tracked)._
    - If `<Trip name>/` already exists and FujiCull didn't create it for this card, ask before adding to it.
    - Existing folders on the SSD are never renamed, moved or reorganised. The flat layout applies only to trips FujiCull archives from now on.
    - The trip name must be a valid folder name on the SSD (exFAT forbids `" * / : < > ? \ |`); show an inline error otherwise.

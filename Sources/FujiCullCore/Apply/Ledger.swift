@@ -40,6 +40,31 @@ public struct ArchiveLocation: Codable, Hashable, Sendable {
     }
 }
 
+/// The folders FujiCull makes inside a trip folder: RAW files, JPGs, a staging copy of the JPGs for
+/// uploading to Google Photos, and videos. _Since 2026-10-11; earlier runs put RAW and JPG files directly in
+/// the trip folder, and those stay where they are._
+public enum ArchiveLayout {
+    public static let raw = "RAW"
+    public static let jpg = "JPG"
+    public static let googlePhotos = "Google Photos"
+    public static let videos = "Videos"
+    public static let subfolders = [raw, jpg, googlePhotos, videos]
+
+    public static func subfolder(for role: FileRole) -> String {
+        switch role {
+        case .raw: return raw
+        case .jpg: return jpg
+        case .googlePhotos: return googlePhotos
+        case .video: return videos
+        }
+    }
+}
+
+extension ArchiveLocation {
+    /// The file's path inside its trip folder, such as `RAW/DSCF0001.RAF`.
+    public var pathInTrip: String { (subfolder.map { "\($0)/" } ?? "") + name }
+}
+
 /// What a card file was when it was copied. A record binds to a file on the card only if these still
 /// match (SR2).
 public struct SourceIdentity: Codable, Hashable, Sendable {

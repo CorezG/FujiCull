@@ -166,8 +166,11 @@ final class ApplyWorld {
         SHA256.hash(data: try Data(contentsOf: card.url(path))).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Where a file is in the archive: RAW files in `RAW`, JPGs in `JPG`, unless a folder is named.
     func location(_ name: String, in subfolder: String? = nil, trip: String? = nil) -> ArchiveLocation {
-        ArchiveLocation(volumeUUID: archiveUUID, folder: trip ?? destination.folder, subfolder: subfolder, name: name)
+        let folder = subfolder ?? (name.uppercased().hasSuffix(".RAF") ? "RAW" : "JPG")
+        return ArchiveLocation(
+            volumeUUID: archiveUUID, folder: trip ?? destination.folder, subfolder: folder, name: name)
     }
 }
 

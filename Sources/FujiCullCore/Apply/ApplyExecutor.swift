@@ -247,7 +247,7 @@ public final class ApplyExecutor {
         destinations.append(context.destination)
         var seen: Set<Ledger.Destination> = []
         for destination in destinations where seen.insert(destination).inserted {
-            for subfolder in [nil, ApplyPlanner.googlePhotos, ApplyPlanner.videos] {
+            for subfolder in [nil] + ArchiveLayout.subfolders {
                 let anchor = ArchiveLocation(
                     volumeUUID: destination.volumeUUID, folder: destination.folder, subfolder: subfolder, name: "")
                 guard let folder = try folder(for: anchor, create: false) else { continue }
@@ -291,27 +291,24 @@ public final class ApplyExecutor {
         destinations.append(context.destination)
         for destination in destinations where result[destination] == nil {
             guard let trip = try tripFolder(destination, create: false) else { continue }
-            var listing = ApplyInput.Listing(trip: Self.visible(try io(try fs.names(in: trip))))
-            for subfolder in [ApplyPlanner.googlePhotos, ApplyPlanner.videos] {
+            var listing = ApplyInput.Listing(names: [nil: Self.visible(try io(try fs.names(in: trip)))])
+            for subfolder in ArchiveLayout.subfolders {
                 let anchor = ArchiveLocation(
                     volumeUUID: destination.volumeUUID, folder: destination.folder, subfolder: subfolder, name: "")
                 guard let folder = try folder(for: anchor, create: false) else { continue }
-                let names = Self.visible(try io(try fs.names(in: folder)))
-                if subfolder == ApplyPlanner.googlePhotos {
-                    listing.googlePhotos = names
-                } else {
-                    listing.videos = names
-                }
+                listing.names[subfolder] = Self.visible(try io(try fs.names(in: folder)))
             }
-            // Tags are read only for files this journal owns; other people's files aren't looked at.
-            let present = Set(listing.trip.map { $0.lowercased() })
+            // Tags are read only for archive files this journal owns; other people's files aren't looked at.
             for file in ledger.allFiles
-            where file.destination == destination && file.location.subfolder == nil
+            where file.destination == destination && (file.role == .raw || file.role == .jpg)
                 && (file.status == .verified || file.status == .trashing)
-                && present.contains(file.location.name.lowercased())
+                && listing.names(in: file.location.subfolder).contains(where: {
+                    $0.lowercased() == file.location.name.lowercased()
+                })
             {
-                if try io(try fs.tags(of: file.location.name, in: trip)).contains(Self.favouriteTag) {
-                    listing.favourites.insert(file.location.name)
+                guard let folder = try folder(for: file.location, create: false) else { continue }
+                if try io(try fs.tags(of: file.location.name, in: folder)).contains(Self.favouriteTag) {
+                    listing.favourites.insert(file.location.pathInTrip)
                 }
             }
             result[destination] = listing

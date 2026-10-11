@@ -20,20 +20,17 @@ public struct ApplyInput: Sendable {
 
     /// What is in one trip folder right now, by exact on-disk name.
     public struct Listing: Sendable {
-        public var trip: [String]
-        public var googlePhotos: [String]
-        public var videos: [String]
-        /// Names in the trip folder that carry the Favourite tag now.
+        /// Names in the trip folder itself (key nil) and in each of its subfolders.
+        public var names: [String?: [String]]
+        /// Files that carry the Favourite tag now, as paths inside the trip folder (`RAW/DSCF0001.RAF`).
         public var favourites: Set<String>
 
-        public init(
-            trip: [String] = [], googlePhotos: [String] = [], videos: [String] = [], favourites: Set<String> = []
-        ) {
-            self.trip = trip
-            self.googlePhotos = googlePhotos
-            self.videos = videos
+        public init(names: [String?: [String]] = [:], favourites: Set<String> = []) {
+            self.names = names
             self.favourites = favourites
         }
+
+        public func names(in subfolder: String?) -> [String] { names[subfolder] ?? [] }
     }
 
     // The fresh scan of the card (SR16).

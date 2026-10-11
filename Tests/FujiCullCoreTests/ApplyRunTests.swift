@@ -134,9 +134,9 @@ extension ApplyWorld {
         // whole as -2, the stranger's file is untouched, and the run still ends with every keeper archived.
         let world = try standardWorld()
         let foreign = Data("someone else's".utf8)
-        let target = world.archive.url("Japan 2026/DSCF0001.JPG")
+        let target = world.archive.url("Japan 2026/JPG/DSCF0001.JPG")
         let fs = FaultyFileSystem(
-            .before(.create, call: 1) { FileManager.default.createFile(atPath: target.path, contents: foreign) })
+            .before(.create, call: 3) { FileManager.default.createFile(atPath: target.path, contents: foreign) })
         let run = try ApplyRun(fs: fs, setup: try world.setup())
         _ = try await run.preflight()
 
@@ -146,7 +146,7 @@ extension ApplyWorld {
         #expect(report.outcome.stopped == nil && report.outcome.skipped.isEmpty)
         #expect(report.check == ApplyExecutor.FinalCheck(keepersOnArchive: 3, problems: []))
         #expect(try Data(contentsOf: target) == foreign)
-        #expect(try world.archiveNames().contains("Japan 2026/DSCF0001-2.JPG"))
+        #expect(try world.archiveNames().contains("Japan 2026/JPG/DSCF0001-2.JPG"))
         #expect(
             summary.duplicatesLeft == [world.location("DSCF0001.RAF")], "the first RAF stays, listed as a duplicate")
         #expect(summary.deletedFromCard == reject4)

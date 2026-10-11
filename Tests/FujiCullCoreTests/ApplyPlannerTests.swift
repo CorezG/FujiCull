@@ -25,10 +25,32 @@ private func taken(_ second: Int) -> CaptureTime {
     CaptureTime(dateTime: String(format: "2026:09:20 05:08:%02d", second), subsecond: "42")
 }
 
+/// Where a file goes in the current layout: RAW files in `RAW`, JPGs in `JPG`, unless a folder is named.
 private func at(_ name: String, in subfolder: String? = nil, _ destination: Ledger.Destination = japan)
     -> ArchiveLocation
 {
-    ArchiveLocation(volumeUUID: destination.volumeUUID, folder: destination.folder, subfolder: subfolder, name: name)
+    let folder = subfolder ?? (name.uppercased().hasSuffix(".RAF") ? "RAW" : "JPG")
+    return ArchiveLocation(
+        volumeUUID: destination.volumeUUID, folder: destination.folder, subfolder: folder, name: name)
+}
+
+/// Where runs before 2026-10-11 put RAW and JPG files: directly in the trip folder.
+private func atTop(_ name: String) -> ArchiveLocation {
+    ArchiveLocation(volumeUUID: japan.volumeUUID, folder: japan.folder, subfolder: nil, name: name)
+}
+
+/// A trip folder's listing in the current layout, from plain file names.
+private func listing(
+    _ photos: [String] = [], googlePhotos: [String] = [], videos: [String] = [], favourites: Set<String> = []
+) -> ApplyInput.Listing {
+    let isRAF: (String) -> Bool = { $0.uppercased().hasSuffix(".RAF") }
+    return ApplyInput.Listing(
+        names: [
+            nil: ["RAW", "JPG", "Google Photos", "Videos"], "RAW": photos.filter(isRAF),
+            "JPG": photos.filter { !isRAF($0) },
+            "Google Photos": googlePhotos, "Videos": videos,
+        ],
+        favourites: Set(favourites.map { (isRAF($0) ? "RAW/" : "JPG/") + $0 }))
 }
 
 /// The records a completed copy leaves: `reserve` then `verified`.
@@ -86,8 +108,13 @@ private let favourite = FrameMark(decision: .keep, isFavourite: true)
 private let reject = FrameMark(decision: .reject)
 private let undecided = FrameMark()
 
+/// Each copy's file name, with its folder when that is Google Photos or Videos. RAW files go to `RAW` and
+/// JPGs to `JPG`; `aFirstRun…` checks those folders once.
 private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
-    copies.map { ($0.to.subfolder.map { "\($0)/" } ?? "") + $0.to.name }
+    copies.map { copy in
+        let folder = copy.to.subfolder.flatMap { $0 == "RAW" || $0 == "JPG" ? nil : $0 }
+        return (folder.map { "\($0)/" } ?? "") + copy.to.name
+    }
 }
 
 // The planner (DESIGN §5.7; R22, R24–R27, D6, D7; SR2, SR8–SR14, SR26). Pure: no files are touched.
@@ -108,6 +135,8 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         #expect(
             names(plan.copies) == ["DSCF0001.RAF", "DSCF0001.JPG", "Google Photos/DSCF0001.JPG", "Videos/DSCF0009.MOV"])
         #expect(plan.copies.map(\.role) == [.raw, .jpg, .googlePhotos, .video])
+        #expect(
+            plan.copies.map(\.to.subfolder) == ["RAW", "JPG", "Google Photos", "Videos"], "each kind in its own folder")
         #expect(plan.copies.map(\.favourite) == [true, true, false, false], "the Google Photos copy is never tagged")
         #expect(plan.copies[0].source == .card(try #require(a.raf)))
         #expect(plan.copies[2].source == .archive(at("DSCF0001.JPG")), "made from the archive JPG, not the card")
@@ -127,7 +156,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func anUndecidedFrameIsNeverMentionedInAnyOperation() throws {
         // Even when an earlier run archived and tagged it.
         let ledger = archivedPair(c, captured: taken(0), as: "DSCF0003") + [.tagged(location: at("DSCF0003.JPG"))]
-        let listing = ApplyInput.Listing(trip: ["DSCF0003.RAF", "DSCF0003.JPG"], googlePhotos: ["DSCF0003.JPG"])
+        let listing = listing(["DSCF0003.RAF", "DSCF0003.JPG"], googlePhotos: ["DSCF0003.JPG"])
 
         let plan = try ApplyPlanner.plan(input([c], marks: [undecided], ledger: ledger, listings: [japan: listing]))
 
@@ -148,7 +177,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aSecondRunCopiesNothingThatIsAlreadyVerified() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a, c], marks: [keep, undecided], ledger: ledger, listings: [japan: listing]))
@@ -159,7 +188,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func decidingAnUndecidedFrameLaterCopiesOnlyThatFrame() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a, c], marks: [keep, keep], ledger: ledger, listings: [japan: listing]))
@@ -172,7 +201,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger =
             archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF"))
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
 
@@ -183,7 +212,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aGooglePhotosCopyThatWasEmptiedOutIsNotMadeAgain() throws {
         // The staging folder is disposable: once verified, its copy is never recreated or required.
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
 
@@ -194,7 +223,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func rejectingAnArchivedFrameRemovesItsArchiveFilesAndDeletesItFromTheCard() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [reject], ledger: ledger, listings: [japan: listing]))
 
@@ -210,7 +239,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aGooglePhotosCopyThatHasGoneDoesNotHoldUpTheRemoval() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [reject], ledger: ledger, listings: [japan: listing]))
 
@@ -232,7 +261,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aTrashMoveThatWasInterruptedIsPlannedAgain() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001") + [.trashing(location: at("DSCF0001.RAF"))]
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [reject], ledger: ledger, listings: [japan: listing]))
 
@@ -241,7 +270,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func onlyFilesThisCardsJournalRecordsAreEverRemoved() throws {
         // The same names are on the archive, but nothing in the journal says FujiCull wrote them.
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [reject], listings: [japan: listing]))
 
@@ -250,7 +279,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aKeeperSetBackToUndecidedAfterArchivingChangesNothing() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [undecided], ledger: ledger, listings: [japan: listing]))
 
@@ -269,11 +298,70 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         #expect(names(plan.copies) == ["DSCF0001.RAF", "DSCF0001.JPG", "Google Photos/DSCF0001.JPG"])
     }
 
+    // MARK: Files archived before RAW and JPG had their own folders
+
+    /// A pair an earlier run put directly in the trip folder, with its Google Photos copy.
+    private func archivedTheOldWay(_ frame: Frame, captured: CaptureTime) throws -> [LedgerRecord] {
+        archived(try #require(frame.raf), as: .raw, of: frame, captured: captured, at: atTop("DSCF0001.RAF"))
+            + archived(try #require(frame.jpg), as: .jpg, of: frame, captured: captured, at: atTop("DSCF0001.JPG"))
+            + archived(
+                try #require(frame.jpg), as: .googlePhotos, of: frame, captured: captured,
+                at: at("DSCF0001.JPG", in: "Google Photos"))
+    }
+
+    private let oldListing = ApplyInput.Listing(
+        names: [nil: ["DSCF0001.RAF", "DSCF0001.JPG", "Google Photos"], "Google Photos": ["DSCF0001.JPG"]])
+
+    @Test func aKeeperArchivedInTheOldLayoutIsNotCopiedAgainAndIsTaggedWhereItIs() throws {
+        let plan = try ApplyPlanner.plan(
+            input(
+                [a], marks: [favourite], ledger: try archivedTheOldWay(a, captured: taken(0)),
+                listings: [japan: oldListing]))
+
+        #expect(plan.copies.isEmpty)
+        #expect(plan.tagChanges.map(\.location) == [atTop("DSCF0001.RAF"), atTop("DSCF0001.JPG")])
+    }
+
+    @Test func rejectingAKeeperArchivedInTheOldLayoutRemovesItFromWhereItIs() throws {
+        let plan = try ApplyPlanner.plan(
+            input(
+                [a], marks: [reject], ledger: try archivedTheOldWay(a, captured: taken(0)),
+                listings: [japan: oldListing]))
+
+        #expect(
+            plan.removals.first?.files == [
+                atTop("DSCF0001.RAF"), atTop("DSCF0001.JPG"), at("DSCF0001.JPG", in: "Google Photos"),
+            ])
+    }
+
+    @Test func aNewKeeperGoesIntoTheNewFoldersEvenWhenTheTripFolderHoldsOldLayoutFiles() throws {
+        // The same file name directly in the trip folder doesn't collide with RAW/ or JPG/.
+        let other = pair("DSCF0001", folder: "DCIM/125_FUJI")
+        let old = ApplyInput.Listing(names: [nil: ["DSCF0001.RAF", "DSCF0001.JPG"]])
+
+        let plan = try ApplyPlanner.plan(input([other], marks: [keep], listings: [japan: old]))
+
+        #expect(
+            plan.copies.map(\.to.pathInTrip) == ["RAW/DSCF0001.RAF", "JPG/DSCF0001.JPG", "Google Photos/DSCF0001.JPG"])
+    }
+
+    @Test func aStagingCopyStillOwedToAnOldLayoutKeeperIsMadeFromWhereItsJPGIs() throws {
+        let ledger =
+            archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: atTop("DSCF0001.RAF"))
+            + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: atTop("DSCF0001.JPG"))
+        let old = ApplyInput.Listing(names: [nil: ["DSCF0001.RAF", "DSCF0001.JPG"]])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: old]))
+
+        #expect(plan.copies.map(\.source) == [.archive(atTop("DSCF0001.JPG"))])
+        #expect(plan.copies.map(\.to) == [at("DSCF0001.JPG", in: "Google Photos")])
+    }
+
     // MARK: Favourites (R8, SR12)
 
     @Test func favouritingAnArchivedFrameTagsItsArchivePairOnly() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
@@ -287,8 +375,8 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func unfavouritingRemovesOnlyTagsFujiCullSet() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001") + [.tagged(location: at("DSCF0001.RAF"))]
         // Both files carry the tag now; the JPG's was added by the owner in Finder.
-        let listing = ApplyInput.Listing(
-            trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"],
+        let listing = listing(
+            ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"],
             favourites: ["DSCF0001.RAF", "DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
@@ -300,8 +388,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger =
             archivedPair(a, captured: taken(0), as: "DSCF0001")
             + [.tagged(location: at("DSCF0001.RAF")), .tagged(location: at("DSCF0001.JPG"))]
-        let listing = ApplyInput.Listing(
-            trip: ["DSCF0001.RAF", "DSCF0001.JPG"], favourites: ["DSCF0001.RAF", "DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], favourites: ["DSCF0001.RAF", "DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
@@ -313,7 +400,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger =
             archivedPair(a, captured: taken(0), as: "DSCF0001")
             + [.tagged(location: at("DSCF0001.RAF")), .tagged(location: at("DSCF0001.JPG"))]
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], favourites: ["DSCF0001.RAF"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], favourites: ["DSCF0001.RAF"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
@@ -323,7 +410,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     // MARK: Names and collisions (SR10, SR11)
 
     @Test func aNameAlreadyOnTheArchiveGivesTheWholeFrameASuffix() throws {
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
 
@@ -332,7 +419,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     }
 
     @Test func aCollisionOnlyInGooglePhotosStillMovesTheWholeFrame() throws {
-        let listing = ApplyInput.Listing(googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
 
@@ -340,7 +427,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     }
 
     @Test func namesAreComparedIgnoringCaseAndTheNextFreeSuffixIsUsed() throws {
-        let listing = ApplyInput.Listing(trip: ["dscf0001.raf", "DSCF0001-2.JPG"])
+        let listing = listing(["dscf0001.raf", "DSCF0001-2.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
 
@@ -373,7 +460,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aForeignFileAtANeededNameRehomesTheWholeFrame() throws {
         // The RAF is verified as DSCF0001; the JPG still needs copying, and someone else's DSCF0001.JPG is there.
         let ledger = archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF"))
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
 
@@ -386,7 +473,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger =
             archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF"))
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
 
@@ -396,7 +483,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func copyAgainRehomesAFrameWhoseArchiveFileChanged() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a], marks: [keep], ledger: ledger, listings: [japan: listing], copyAgain: [.frame(a.id)]))
@@ -406,7 +493,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     }
 
     @Test func entriesThatDifferOnlyByCaseStopThePlan() {
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.JPG", "dscf0001.jpg"])
+        let listing = listing(["DSCF0001.JPG", "dscf0001.jpg"])
 
         #expect(throws: ApplyError.ambiguousNames(["DSCF0001.JPG", "dscf0001.jpg"])) {
             try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
@@ -418,7 +505,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aDifferentPhotoAtTheSamePathAndSizeIsCopiedNotSkipped() throws {
         // After a format the card holds a new DSCF0001 with identical sizes; only the capture time differs.
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a], marks: [keep], captured: [taken(30)], ledger: ledger, listings: [japan: listing]))
@@ -430,7 +517,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func rejectingADifferentPhotoNeverRemovesTheOldPhotosArchiveFiles() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a], marks: [reject], captured: [taken(30)], ledger: ledger, listings: [japan: listing]))
@@ -449,7 +536,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aKeeperWithNoCaptureDateIsNotCopiedAgainEveryRun() throws {
         // With no capture time on either side, the file's own date stands in, so it isn't duplicated each run.
         let ledger = archivedPair(a, captured: nil, as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a], marks: [keep], captured: [nil], ledger: ledger, listings: [japan: listing]))
@@ -459,7 +546,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aRecordWithACaptureTimeDoesNotBindToAPhotoWithout() throws {
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a], marks: [keep], captured: [nil], ledger: ledger, listings: [japan: listing]))
@@ -472,7 +559,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger =
             archivedPair(a, captured: taken(0), as: "DSCF0001")
             + [.deleting(path: "DCIM/124_FUJI/DSCF0001.RAF"), .deleted(path: "DCIM/124_FUJI/DSCF0001.RAF")]
-        let listing = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
 
@@ -483,7 +570,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
     @Test func aLockedCardStillGetsCopiesAndArchiveRemovalsButNoDeletes() throws {
         let ledger = archivedPair(b, captured: taken(1), as: "DSCF0002")
-        let listing = ApplyInput.Listing(trip: ["DSCF0002.RAF", "DSCF0002.JPG"], googlePhotos: ["DSCF0002.JPG"])
+        let listing = listing(["DSCF0002.RAF", "DSCF0002.JPG"], googlePhotos: ["DSCF0002.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a, b], marks: [keep, reject], ledger: ledger, listings: [japan: listing], readOnly: true))
@@ -522,7 +609,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
                     path: movie.relativePath, size: movie.size, modified: shot, captureTime: nil, sha256: "h"),
                 size: movie.size, sha256: "h"),
         ]
-        let listing = ApplyInput.Listing(videos: ["DSCF0009.MOV"])
+        let listing = listing(videos: ["DSCF0009.MOV"])
 
         let same = try ApplyPlanner.plan(
             input([], marks: [], ledger: ledger, listings: [japan: listing], videos: [movie]))
@@ -540,7 +627,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func keepersFiledUnderAnEarlierFolderAreFoundThere() throws {
         let part2 = Ledger.Destination(volumeUUID: archive, folder: "Japan 2026 part 2")
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001", in: japan)
-        let old = ApplyInput.Listing(trip: ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let old = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
             input([a, b], marks: [favourite, keep], ledger: ledger, listings: [japan: old], destination: part2))

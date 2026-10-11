@@ -114,7 +114,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
 
     @Test func theSummaryListsDuplicatesLeftByRehomingAndSkippedRemovals() throws {
         let (world, id) = try rejectedAfterArchiving()
-        try ApplyWorld.bytes(1_200, seed: 555).write(to: world.archive.url("Japan 2026/DSCF0001.JPG"))
+        try ApplyWorld.bytes(1_200, seed: 555).write(to: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
         let done = try world.apply()
         var plan = done.plan
         plan.superseded = [world.location("DSCF0009.RAF")]
@@ -231,7 +231,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         let world = try standardWorld()
         world.marks[frameID("DSCF0004")] = FrameMark()  // first run: nothing to delete
         try world.apply()
-        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/DSCF0001.JPG"))
+        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
         world.marks[frameID("DSCF0004")] = rejectMark
         let before = try world.cardNames()
 
@@ -250,7 +250,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         let world = try standardWorld()
         world.marks[frameID("DSCF0004")] = FrameMark()
         try world.apply()
-        try ApplyWorld.bytes(3_000, seed: 4_242).write(to: world.archive.url("Japan 2026/DSCF0002.RAF"))
+        try ApplyWorld.bytes(3_000, seed: 4_242).write(to: world.archive.url("Japan 2026/RAW/DSCF0002.RAF"))
         world.marks[frameID("DSCF0004")] = rejectMark
         let before = try world.cardNames()
 
@@ -502,7 +502,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
             "moved, not destroyed")
         #expect(
             try world.archiveNames().filter { !$0.contains(".TestTrash") } == [
-                "Japan 2026/DSCF0002.JPG", "Japan 2026/DSCF0002.RAF", "Japan 2026/Google Photos/DSCF0002.JPG",
+                "Japan 2026/Google Photos/DSCF0002.JPG", "Japan 2026/JPG/DSCF0002.JPG", "Japan 2026/RAW/DSCF0002.RAF",
             ])
         #expect(try world.cardNames() == ["DCIM/124_FUJI/DSCF0002.RAF", "DCIM/124_FUJI/DSCF0002.JPG"])
         #expect(done.executor.ledger.file(at: gone[0])?.status == .trashed)
@@ -521,18 +521,18 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
     @Test func anArchiveFileChangedSinceItWasVerifiedIsSkippedAndReported() throws {
         // Edited by the owner after archiving: it isn't the file FujiCull wrote any more, so it stays.
         let (world, id) = try rejectedAfterArchiving()
-        try ApplyWorld.bytes(1_200, seed: 555).write(to: world.archive.url("Japan 2026/DSCF0001.JPG"))
+        try ApplyWorld.bytes(1_200, seed: 555).write(to: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
 
         let done = try world.apply()
 
         #expect(done.removal.skipped == [.init(frame: id, reason: .archiveFileChanged(world.location("DSCF0001.JPG")))])
         #expect(done.removal.trashed.isEmpty, "the RAF isn't removed on its own")
-        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/DSCF0001.RAF").path))
+        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/RAW/DSCF0001.RAF").path))
     }
 
     @Test func anArchiveFileThatHasGoneSkipsTheFrame() throws {
         let (world, id) = try rejectedAfterArchiving()
-        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/DSCF0001.RAF"))
+        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/RAW/DSCF0001.RAF"))
 
         let done = try world.apply()
 
@@ -559,7 +559,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
 
         #expect(done.removal.skipped == [.init(frame: id, reason: .trashFailed(world.location("DSCF0001.RAF")))])
         #expect(done.removal.trashed.isEmpty)
-        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/DSCF0001.RAF").path))
+        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/RAW/DSCF0001.RAF").path))
         // The only unlinks in the whole run are the frame's two card files.
         #expect(fs.calls(.remove) == 2)
         #expect(done.executor.ledger.unsettledTrashes.map(\.location) == [world.location("DSCF0001.RAF")])
@@ -569,7 +569,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         // The app died between the move and its record (SR25): the frame must not be skipped for ever.
         let (world, _) = try rejectedAfterArchiving()
         try LedgerJournal.open(at: world.journalURL).journal.append(.trashing(location: world.location("DSCF0001.RAF")))
-        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/DSCF0001.RAF"))
+        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/RAW/DSCF0001.RAF"))
 
         let executor = try world.executor()
         let recovery = try executor.recover()
@@ -605,6 +605,6 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         #expect(
             removal.skipped.map(\.reason) == [.notThisFramesFile("Holiday.JPG"), .notThisFramesFile("DSCF0002.RAF")])
         #expect(FileManager.default.fileExists(atPath: foreign.path))
-        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/DSCF0002.RAF").path))
+        #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/RAW/DSCF0002.RAF").path))
     }
 }

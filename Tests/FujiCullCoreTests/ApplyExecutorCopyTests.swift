@@ -19,8 +19,8 @@ import Testing
     }
 
     private let standardArchive = [
-        "Japan 2026/DSCF0001.JPG", "Japan 2026/DSCF0001.RAF", "Japan 2026/DSCF0002.JPG", "Japan 2026/DSCF0002.RAF",
-        "Japan 2026/Google Photos/DSCF0001.JPG", "Japan 2026/Google Photos/DSCF0002.JPG",
+        "Japan 2026/Google Photos/DSCF0001.JPG", "Japan 2026/Google Photos/DSCF0002.JPG", "Japan 2026/JPG/DSCF0001.JPG",
+        "Japan 2026/JPG/DSCF0002.JPG", "Japan 2026/RAW/DSCF0001.RAF", "Japan 2026/RAW/DSCF0002.RAF",
         "Japan 2026/Videos/DSCF0005.MOV",
     ]
 
@@ -36,8 +36,8 @@ import Testing
         #expect(outcome.copied.count == 7)
         #expect(try world.archiveNames() == standardArchive)
         let archived = try world.archiveFiles()
-        #expect(archived["Japan 2026/DSCF0001.RAF"] == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0001.RAF")))
-        #expect(archived["Japan 2026/DSCF0002.JPG"] == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0002.JPG")))
+        #expect(archived["Japan 2026/RAW/DSCF0001.RAF"] == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0001.RAF")))
+        #expect(archived["Japan 2026/JPG/DSCF0002.JPG"] == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0002.JPG")))
         #expect(
             archived["Japan 2026/Google Photos/DSCF0001.JPG"]
                 == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0001.JPG")))
@@ -52,10 +52,10 @@ import Testing
 
         let (_, executor) = try world.run()
 
-        #expect(try world.tags("Japan 2026/DSCF0001.RAF") == ["Favourite"])
-        #expect(try world.tags("Japan 2026/DSCF0001.JPG") == ["Favourite"])
+        #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF") == ["Favourite"])
+        #expect(try world.tags("Japan 2026/JPG/DSCF0001.JPG") == ["Favourite"])
         #expect(try world.tags("Japan 2026/Google Photos/DSCF0001.JPG").isEmpty)
-        #expect(try world.tags("Japan 2026/DSCF0002.RAF").isEmpty)
+        #expect(try world.tags("Japan 2026/RAW/DSCF0002.RAF").isEmpty)
         #expect(executor.ledger.file(at: world.location("DSCF0001.RAF"))?.taggedByUs == true)
         #expect(executor.ledger.file(at: world.location("DSCF0002.RAF"))?.taggedByUs == false)
     }
@@ -68,7 +68,7 @@ import Testing
 
         try world.run()
 
-        let onArchive = try world.archive.url("Japan 2026/DSCF0001.JPG").resourceValues(forKeys: [
+        let onArchive = try world.archive.url("Japan 2026/JPG/DSCF0001.JPG").resourceValues(forKeys: [
             .contentModificationDateKey
         ])
         #expect(onArchive.contentModificationDate == onCard.contentModificationDate)
@@ -170,7 +170,7 @@ import Testing
             outcome.stopped
                 == .io(FileSystemError(operation: .write, name: ".DSCF0001.JPG.fujicull-partial", code: ENOSPC)))
         #expect(outcome.copied == [world.location("DSCF0001.RAF")])
-        #expect(try world.archiveNames() == ["Japan 2026/DSCF0001.RAF"])
+        #expect(try world.archiveNames() == ["Japan 2026/RAW/DSCF0001.RAF"])
         #expect(executor.ledger.file(at: world.location("DSCF0001.JPG"))?.status == .released)
         #expect(fs.calls(.write) == 2)
     }
@@ -215,8 +215,9 @@ import Testing
         let executor = try world.executor()
         let plan = try executor.makePlan()
         let foreign = Data("someone else's photo".utf8)
-        try FileManager.default.createDirectory(at: world.archive.url("Japan 2026"), withIntermediateDirectories: true)
-        try foreign.write(to: world.archive.url("Japan 2026/DSCF0001.JPG"))
+        try FileManager.default.createDirectory(
+            at: world.archive.url("Japan 2026/JPG"), withIntermediateDirectories: true)
+        try foreign.write(to: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
         var late = plan
         late.destinationState = .ours  // pre-flight has agreed to use the folder
 
@@ -227,7 +228,7 @@ import Testing
                 ApplyExecutor.CopyOutcome.Skipped(
                     owner: .frame(FrameID("DCIM/124_FUJI/DSCF0001")), reason: .nameConflict)
             ])
-        #expect(try Data(contentsOf: world.archive.url("Japan 2026/DSCF0001.JPG")) == foreign, "never overwritten")
+        #expect(try Data(contentsOf: world.archive.url("Japan 2026/JPG/DSCF0001.JPG")) == foreign, "never overwritten")
 
         let (again, after) = try world.run()
 
@@ -235,11 +236,11 @@ import Testing
         #expect(after.ledger.file(at: world.location("DSCF0001.RAF"))?.status == .superseded)
         #expect(
             try world.archiveNames().filter { $0.contains("DSCF0001") } == [
-                "Japan 2026/DSCF0001-2.JPG", "Japan 2026/DSCF0001-2.RAF", "Japan 2026/DSCF0001.JPG",
-                "Japan 2026/DSCF0001.RAF",
-                "Japan 2026/Google Photos/DSCF0001-2.JPG",
+                "Japan 2026/Google Photos/DSCF0001-2.JPG", "Japan 2026/JPG/DSCF0001-2.JPG",
+                "Japan 2026/JPG/DSCF0001.JPG",
+                "Japan 2026/RAW/DSCF0001-2.RAF", "Japan 2026/RAW/DSCF0001.RAF",
             ])
-        #expect(try Data(contentsOf: world.archive.url("Japan 2026/DSCF0001.JPG")) == foreign)
+        #expect(try Data(contentsOf: world.archive.url("Japan 2026/JPG/DSCF0001.JPG")) == foreign)
         #expect(try after.finalCheck().problems.isEmpty)
     }
 
@@ -261,8 +262,11 @@ import Testing
     @Test func aRunCutOffBetweenClaimingANameAndTheRenameIsCleanedUpAndFinished() throws {
         let world = try standardWorld()
         try world.run(FaultyFileSystem(.die(.rename, call: 1)))
-        #expect(try world.archiveNames() == ["Japan 2026/.DSCF0001.RAF.fujicull-partial", "Japan 2026/DSCF0001.RAF"])
-        #expect(try Data(contentsOf: world.archive.url("Japan 2026/DSCF0001.RAF")).isEmpty, "the placeholder")
+        #expect(
+            try world.archiveNames() == [
+                "Japan 2026/RAW/.DSCF0001.RAF.fujicull-partial", "Japan 2026/RAW/DSCF0001.RAF",
+            ])
+        #expect(try Data(contentsOf: world.archive.url("Japan 2026/RAW/DSCF0001.RAF")).isEmpty, "the placeholder")
 
         let executor = try world.executor()
         let recovery = try executor.recover()
@@ -277,9 +281,9 @@ import Testing
 
     @Test func aCopyThatFinishedButWasNotRecordedIsAdoptedNotCopiedAgain() throws {
         let world = try standardWorld()
-        // Folder syncs: 1 after creating the trip folder, 2 after the first file's rename.
-        try world.run(FaultyFileSystem(.die(.syncFolder, call: 2)))
-        #expect(try world.archiveNames() == ["Japan 2026/DSCF0001.RAF"])
+        // Folder syncs: 1 after creating the trip folder, 2 after creating RAW, 3 after the first file's rename.
+        try world.run(FaultyFileSystem(.die(.syncFolder, call: 3)))
+        #expect(try world.archiveNames() == ["Japan 2026/RAW/DSCF0001.RAF"])
         let fs = FaultyFileSystem()
 
         let executor = try world.executor(fs)
@@ -304,17 +308,19 @@ import Testing
                 owner: .frame(FrameID("DCIM/124_FUJI/DSCF0001")), role: .raw, location: location,
                 partial: ".DSCF0001.RAF.fujicull-partial"))
         let theirs = ApplyWorld.bytes(3_000, seed: 12_345)
-        try FileManager.default.createDirectory(at: world.archive.url("Japan 2026"), withIntermediateDirectories: true)
-        try theirs.write(to: world.archive.url("Japan 2026/DSCF0001.RAF"))
+        try FileManager.default.createDirectory(
+            at: world.archive.url("Japan 2026/RAW"), withIntermediateDirectories: true)
+        try theirs.write(to: world.archive.url("Japan 2026/RAW/DSCF0001.RAF"))
 
         let (outcome, executor) = try world.run()
 
         #expect(outcome.stopped == nil)
-        #expect(try Data(contentsOf: world.archive.url("Japan 2026/DSCF0001.RAF")) == theirs)
+        #expect(try Data(contentsOf: world.archive.url("Japan 2026/RAW/DSCF0001.RAF")) == theirs)
         #expect(executor.ledger.file(at: location)?.status == .released)
         #expect(
-            try world.archiveNames().contains("Japan 2026/DSCF0001-2.RAF"), "the frame goes under the next free name")
-        #expect(try world.archiveNames().contains("Japan 2026/DSCF0001-2.JPG"))
+            try world.archiveNames().contains("Japan 2026/RAW/DSCF0001-2.RAF"),
+            "the frame goes under the next free name")
+        #expect(try world.archiveNames().contains("Japan 2026/JPG/DSCF0001-2.JPG"))
     }
 
     @Test func aReservationInAFolderThatNoLongerExistsIsReleased() throws {
@@ -397,8 +403,8 @@ import Testing
                 let label: Comment = "after the drive vanished at \(operation) call \(point)"
                 #expect(outcome.stopped == nil, label)
                 #expect(try world.archiveFiles() == expected, label)
-                #expect(try world.tags("Japan 2026/DSCF0001.RAF") == ["Favourite"], label)
-                #expect(try world.tags("Japan 2026/DSCF0001.JPG") == ["Favourite"], label)
+                #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF") == ["Favourite"], label)
+                #expect(try world.tags("Japan 2026/JPG/DSCF0001.JPG") == ["Favourite"], label)
                 #expect(executor.ledger.openReservations.isEmpty, label)
                 #expect(try executor.finalCheck() == ApplyExecutor.FinalCheck(keepersOnArchive: 3, problems: []), label)
             }
@@ -411,9 +417,9 @@ import Testing
     @Test func aRunCutOffBeforeTheStagingCopiesMakesThemNextTime() throws {
         let world = try ApplyWorld()
         try world.addPair("DSCF0001", keepMark)
-        // Folder creations: 1 the trip folder, 2 Google Photos.
-        try world.run(FaultyFileSystem(.die(.createFolder, call: 2)))
-        #expect(try world.archiveNames() == ["Japan 2026/DSCF0001.JPG", "Japan 2026/DSCF0001.RAF"])
+        // Folder creations: 1 the trip folder, 2 RAW, 3 JPG, 4 Google Photos.
+        try world.run(FaultyFileSystem(.die(.createFolder, call: 4)))
+        #expect(try world.archiveNames() == ["Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/DSCF0001.RAF"])
 
         let (outcome, _) = try world.run()
 
@@ -426,8 +432,8 @@ import Testing
     @Test func anArchiveJPGEditedSinceItWasVerifiedIsNotCopiedToGooglePhotos() throws {
         let world = try ApplyWorld()
         try world.addPair("DSCF0001", keepMark)
-        try world.run(FaultyFileSystem(.die(.createFolder, call: 2)))
-        try ApplyWorld.bytes(1_200, seed: 777).write(to: world.archive.url("Japan 2026/DSCF0001.JPG"))
+        try world.run(FaultyFileSystem(.die(.createFolder, call: 4)))
+        try ApplyWorld.bytes(1_200, seed: 777).write(to: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
 
         let (outcome, _) = try world.run()
 
@@ -436,7 +442,7 @@ import Testing
                 ApplyExecutor.CopyOutcome.Skipped(
                     owner: .frame(FrameID("DCIM/124_FUJI/DSCF0001")), reason: .archiveJPGUnavailable)
             ])
-        #expect(try world.archiveNames() == ["Japan 2026/DSCF0001.JPG", "Japan 2026/DSCF0001.RAF"])
+        #expect(try world.archiveNames() == ["Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/DSCF0001.RAF"])
     }
 
     // MARK: Tags on later runs (SR12)
@@ -445,21 +451,21 @@ import Testing
         let world = try ApplyWorld()
         let id = try world.addPair("DSCF0001", keepMark)
         try world.run()
-        try world.setTags(["Print"], on: "Japan 2026/DSCF0001.JPG")
+        try world.setTags(["Print"], on: "Japan 2026/JPG/DSCF0001.JPG")
 
         world.marks[id] = favouriteMark
         let (favoured, tagged) = try world.run()
 
         #expect(favoured.copied.isEmpty)
-        #expect(try world.tags("Japan 2026/DSCF0001.RAF") == ["Favourite"])
-        #expect(Set(try world.tags("Japan 2026/DSCF0001.JPG")) == ["Favourite", "Print"])
+        #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF") == ["Favourite"])
+        #expect(Set(try world.tags("Japan 2026/JPG/DSCF0001.JPG")) == ["Favourite", "Print"])
         #expect(tagged.ledger.file(at: world.location("DSCF0001.JPG"))?.taggedByUs == true)
 
         world.marks[id] = keepMark
         let (_, untagged) = try world.run()
 
-        #expect(try world.tags("Japan 2026/DSCF0001.RAF").isEmpty)
-        #expect(try world.tags("Japan 2026/DSCF0001.JPG") == ["Print"], "the owner's own tag is left alone")
+        #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF").isEmpty)
+        #expect(try world.tags("Japan 2026/JPG/DSCF0001.JPG") == ["Print"], "the owner's own tag is left alone")
         #expect(untagged.ledger.file(at: world.location("DSCF0001.JPG"))?.taggedByUs == false)
     }
 
@@ -476,7 +482,7 @@ import Testing
 
         try world.run()
 
-        #expect(try world.tags("Japan 2026/DSCF0001.RAF") == ["Favourite"])
+        #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF") == ["Favourite"])
     }
 
     @Test func aNewFileStartsWithExactlyTheTagsFujiCullIntends() throws {
@@ -484,7 +490,7 @@ import Testing
         // that is already on the file the moment it gets its final name.
         let world = try ApplyWorld()
         try world.addPair("DSCF0001", keepMark)
-        let target = world.archive.url("Japan 2026/DSCF0001.RAF")
+        let target = world.archive.url("Japan 2026/RAW/DSCF0001.RAF")
         let fs = FaultyFileSystem(
             .after(.rename, call: 1) {
                 do {
@@ -496,7 +502,7 @@ import Testing
 
         try world.run(fs)
 
-        #expect(try world.tags("Japan 2026/DSCF0001.RAF").isEmpty)
+        #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF").isEmpty)
     }
 
     // MARK: The final check (SR28)
@@ -504,8 +510,8 @@ import Testing
     @Test func theFinalCheckReportsMissingChangedAndUnarchivedKeepers() throws {
         let world = try standardWorld()
         try world.run()
-        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/DSCF0001.RAF"))
-        try Data("truncated".utf8).write(to: world.archive.url("Japan 2026/DSCF0002.JPG"))
+        try FileManager.default.removeItem(at: world.archive.url("Japan 2026/RAW/DSCF0001.RAF"))
+        try Data("truncated".utf8).write(to: world.archive.url("Japan 2026/JPG/DSCF0002.JPG"))
         try FileManager.default.removeItem(at: world.archive.url("Japan 2026/Google Photos/DSCF0001.JPG"))
         let late = try world.addPair("DSCF0006", keepMark)
 
