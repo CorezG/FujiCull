@@ -173,6 +173,12 @@ private struct PreflightView: View {
             figure: preflight.keepers.formatted(),
             label: "to keep" + (preflight.favourites > 0 ? " (\(preflight.favourites) ♥)" : ""),
             detail: copyLine, colour: Color(red: 0.19, green: 0.82, blue: 0.35))
+        if preflight.toEdit > 0 {
+            Row(
+                figure: preflight.toEdit.formatted(), label: "of them flagged for editing",
+                detail: "Their RAW files go to RAW › Edit Me. Their JPGs are archived but left out of Google Photos.",
+                colour: .orange)
+        }
         if preflight.videos > 0 {
             Row(
                 figure: preflight.videos.formatted(), label: "videos to copy",

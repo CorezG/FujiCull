@@ -61,6 +61,7 @@ public enum KeyMap {
         switch press.characters.lowercased() {
         case "/": return .cull(.toggleFavourite)
         case ".": return .cull(.reset)
+        case ",": return .cull(.toggleNeedsEdit)
         case "'": return .cull(.toggleUndecidedFilter)
         case "g": return .toggleGrid
         case "i": return .toggleExif

@@ -445,6 +445,44 @@ import Testing
         #expect(try world.archiveNames() == ["Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/DSCF0001.RAF"])
     }
 
+    // MARK: Photos flagged for editing (R28)
+
+    @Test func aFlaggedPhotoIsArchivedUnderEditMeWithoutAGooglePhotosCopy() throws {
+        let world = try ApplyWorld()
+        try world.addPair("DSCF0001", toEditMark)
+        try world.addPair("DSCF0002", keepMark)
+
+        let (outcome, executor) = try world.run()
+
+        #expect(outcome.stopped == nil)
+        #expect(
+            try world.archiveNames() == [
+                "Japan 2026/Google Photos/DSCF0002.JPG", "Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/JPG/DSCF0002.JPG",
+                "Japan 2026/RAW/DSCF0002.RAF", "Japan 2026/RAW/Edit Me/DSCF0001.RAF",
+            ])
+        #expect(
+            try world.archiveFiles()["Japan 2026/RAW/Edit Me/DSCF0001.RAF"]
+                == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0001.RAF")))
+        #expect(try executor.finalCheck() == ApplyExecutor.FinalCheck(keepersOnArchive: 2, problems: []))
+
+        let again = try world.run().outcome
+        #expect(again == ApplyExecutor.CopyOutcome(), "a second run finds nothing to do")
+    }
+
+    @Test func aRunCutOffWhileMakingTheEditMeFolderFinishesNextTime() throws {
+        let world = try ApplyWorld()
+        try world.addPair("DSCF0001", toEditMark)
+        // Folder creations: 1 the trip folder, 2 RAW, 3 RAW/Edit Me.
+        try world.run(FaultyFileSystem(.die(.createFolder, call: 3)))
+        #expect(try world.archiveNames().isEmpty)
+
+        let (outcome, executor) = try world.run()
+
+        #expect(outcome.stopped == nil)
+        #expect(try world.archiveNames() == ["Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/Edit Me/DSCF0001.RAF"])
+        #expect(try executor.finalCheck().problems.isEmpty)
+    }
+
     // MARK: Tags on later runs (SR12)
 
     @Test func favouritingAndUnfavouritingLaterChangesOnlyOurTagAndKeepsTheOwners() throws {

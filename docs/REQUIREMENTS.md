@@ -47,6 +47,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 ### 4.2 Decisions
 - R7. Each frame has exactly one state: **Undecided** (default), **Keep**, **Reject**.
 - R8. **♥ Favourite** is a flag on top of Keep. Favouriting a frame also sets it to Keep; rejecting a favourite clears the flag.
+- R28. **Needs editing** is a second flag on top of Keep, for a photo whose RAW file needs more than basic adjustments (badly blown out or underexposed, say). Flagging a frame also sets it to Keep; rejecting or resetting it clears the flag; it can be combined with ♥. At Apply, a flagged frame's RAF is archived in `<Trip name>/RAW/Edit Me/` instead of `RAW/`, and its JPG is archived in `JPG/` but **not** copied to `Google Photos/`. The folder is chosen when the RAF is first archived: changing the flag afterwards doesn't move a file that is already on the archive. Removing the flag later does add the missing `Google Photos/` copy on the next Apply. _Added 2026-10-11._
 - R9. Every decision applies to the whole pair (RAF + JPG) — there is no way to treat them separately.
 - R10. Unlimited undo of decisions within a session.
 
@@ -60,6 +61,7 @@ The JPG (with my film simulation) is what I judge; the RAF always follows its JP
 | Shift + ← / → | Jump 10 frames |
 | `/` | Toggle ♥ Favourite (implies Keep) |
 | `.` | Reset to Undecided |
+| `,` | Toggle "needs editing" (sets Keep) _(added 2026-10-11, R28)_ |
 | Return | Toggle 100% zoom (focus check) / fit |
 | `'` | Toggle filter: show only Undecided |
 | ⌫ Delete | Undo last action |

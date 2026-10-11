@@ -29,6 +29,7 @@ struct FujiCullApp: App {
                 item("Keep", .cull(.keep), .upArrow)
                 item("Reject", .cull(.reject), .downArrow)
                 item("Toggle Favourite", .cull(.toggleFavourite), "/")
+                item("Flag for Editing", .cull(.toggleNeedsEdit), ",")
                 item("Reset to Undecided", .cull(.reset), ".")
                 Divider()
                 item("Undo Last Decision", .cull(.undo), .delete)

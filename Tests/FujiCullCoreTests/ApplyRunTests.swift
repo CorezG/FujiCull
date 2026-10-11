@@ -53,6 +53,16 @@ extension ApplyWorld {
         #expect(await run.ledger.framesDeletedFromCard.contains(FrameID("DCIM/124_FUJI/DSCF0004")))
     }
 
+    @Test func preflightCountsThePhotosGoingToEditMe() async throws {
+        let world = try standardWorld()
+        try world.addPair("DSCF0006", toEditMark)
+        let run = try ApplyRun(fs: FaultyFileSystem(), setup: try world.setup())
+
+        let preflight = try await run.preflight()
+
+        #expect(preflight.toEdit == 1 && preflight.keepers == 3)
+    }
+
     @Test func decliningAtTheConfirmationLeavesTheCardAsItWas() async throws {
         let world = try standardWorld()
         let run = try ApplyRun(fs: FaultyFileSystem(), setup: try world.setup())

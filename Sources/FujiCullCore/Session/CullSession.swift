@@ -2,7 +2,7 @@
 /// (DESIGN §5.2). A value type with one entry point, `apply(_:)`, so every key is a unit test.
 ///
 /// Rules, in addition to the per-command ones:
-/// - A favourite is always a Keep (R8).
+/// - A favourite is always a Keep (R8), and so is a photo flagged for editing (R28).
 /// - When the filter is on, the cursor sits on an undecided frame if there is one (D4).
 /// - Undo covers decisions only, and returns the cursor to the frame it changed (D3).
 public struct CullSession: Equatable, Sendable {
@@ -69,14 +69,17 @@ public struct CullSession: Equatable, Sendable {
         switch command {
         case .keep:
             let mark = self.mark(at: cursor)
-            decide(FrameMark(decision: .keep, isFavourite: mark.isFavourite), advance: true)
+            decide(FrameMark(decision: .keep, isFavourite: mark.isFavourite, needsEdit: mark.needsEdit), advance: true)
         case .reject:
             decide(FrameMark(decision: .reject), advance: true)
         case .toggleFavourite:
             let mark = self.mark(at: cursor)
             decide(
-                mark.isFavourite ? FrameMark(decision: .keep) : FrameMark(decision: .keep, isFavourite: true),
-                advance: false)
+                FrameMark(decision: .keep, isFavourite: !mark.isFavourite, needsEdit: mark.needsEdit), advance: false)
+        case .toggleNeedsEdit:
+            let mark = self.mark(at: cursor)
+            decide(
+                FrameMark(decision: .keep, isFavourite: mark.isFavourite, needsEdit: !mark.needsEdit), advance: false)
         case .reset:
             decide(FrameMark(), advance: false)
         case .next:
@@ -184,5 +187,6 @@ public struct CullSession: Equatable, Sendable {
         case .undecided: counts.undecided += amount
         }
         if mark.isFavourite { counts.favourite += amount }
+        if mark.needsEdit { counts.needsEdit += amount }
     }
 }

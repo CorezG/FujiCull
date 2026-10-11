@@ -135,11 +135,28 @@ private func frame(_ name: String, jpg: Int64? = 12, raf: Int64? = 87) -> Frame 
         let stored = try #require(file.frames.first)
 
         #expect(stored.captureTime == nil)
+        #expect(stored.mark == FrameMark(decision: .keep), "a mark saved before the edit flag existed has none")
         #expect(
             SessionRestore.binds(
                 stored, to: CaptureTime(dateTime: "2026:09:20 05:08:11", subsecond: nil),
                 savedBySchema: file.schemaVersion))
         #expect(!SessionRestore.binds(stored, to: nil, savedBySchema: file.schemaVersion))
+    }
+
+    @Test func theEditFlagIsSavedAndRestored() throws {
+        let frames = [frame("DSCF0001"), frame("DSCF0002")]
+        var session = CullSession(frameIDs: frames.map(\.id))
+        session.apply(.toggleNeedsEdit)
+        let file = SessionFile(key: "k", rootHint: "", session: session, frames: frames)
+
+        let decoded = try JSONDecoder().decode(SessionFile.self, from: JSONEncoder().encode(file))
+
+        #expect(decoded.frames.first?.mark == FrameMark(decision: .keep, needsEdit: true))
+        guard case .full(let restored) = SessionRestore.match(decoded, to: frames) else {
+            Issue.record("expected a full match")
+            return
+        }
+        #expect(restored.mark(at: 0).needsEdit)
     }
 
     @Test func newFilesAreSavedAsVersionTwo() {

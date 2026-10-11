@@ -16,6 +16,65 @@ private func applying(_ commands: [CullCommand], to start: CullSession) -> CullS
 // The keymap's session rules (REQUIREMENTS §4.2–4.3, R7–R11; DESIGN §5.2, D3, D4).
 @Suite struct CullSessionTests {
 
+    // MARK: , flags a photo whose RAW needs editing (R28)
+
+    @Test func commaFlagsAPhotoForEditingKeepsItAndStaysOnIt() {
+        let s = applying([.toggleNeedsEdit], to: session())
+
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, needsEdit: true))
+        #expect(s.cursor == 0, "like the favourite key, it doesn't move on")
+        #expect(s.counts == CullCounts(keep: 1, reject: 0, undecided: 4, favourite: 0, needsEdit: 1))
+    }
+
+    @Test func commaAgainClearsTheFlagAndThePhotoStaysAKeeper() {
+        let s = applying([.toggleNeedsEdit, .toggleNeedsEdit], to: session())
+
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep))
+        #expect(s.counts.needsEdit == 0)
+    }
+
+    @Test func aPhotoCanBeBothAFavouriteAndFlaggedForEditing() {
+        var s = applying([.toggleFavourite, .toggleNeedsEdit], to: session())
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, isFavourite: true, needsEdit: true))
+
+        s.apply(.toggleFavourite)
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, needsEdit: true), "each flag toggles on its own")
+        s.apply(.toggleFavourite)
+        s.apply(.toggleNeedsEdit)
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, isFavourite: true))
+    }
+
+    @Test func keepingAFlaggedPhotoAgainLeavesItsFlagsAlone() {
+        var s = applying([.toggleNeedsEdit, .toggleFavourite], to: session(autoAdvance: false))
+
+        s.apply(.keep)
+
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, isFavourite: true, needsEdit: true))
+    }
+
+    @Test func rejectingOrResettingAFlaggedPhotoClearsTheEditFlag() {
+        let rejected = applying([.toggleNeedsEdit, .reject], to: session(autoAdvance: false))
+        let reset = applying([.toggleNeedsEdit, .reset], to: session())
+
+        #expect(rejected.mark(at: 0) == FrameMark(decision: .reject))
+        #expect(reset.mark(at: 0) == FrameMark())
+        #expect(rejected.counts.needsEdit == 0 && reset.counts.needsEdit == 0)
+    }
+
+    @Test func undoPutsTheEditFlagBack() {
+        let s = applying([.toggleNeedsEdit, .reject, .undo], to: session(autoAdvance: false))
+
+        #expect(s.mark(at: 0) == FrameMark(decision: .keep, needsEdit: true))
+    }
+
+    @Test func anEditFlagOnAPhotoThatIsNotAKeeperIsDropped() {
+        let ids = [FrameID("DCIM/100_FUJI/DSCF1")]
+        let s = CullSession(frameIDs: ids, marks: [ids[0]: FrameMark(decision: .reject, needsEdit: true)])
+
+        #expect(s.mark(at: 0) == FrameMark(decision: .reject))
+        #expect(s.counts.needsEdit == 0)
+    }
+
     // MARK: After Apply deleted frames from the card (SR21)
 
     @Test func removingDeletedFramesKeepsEveryOtherDecisionAndTheFilter() {

@@ -5,19 +5,31 @@ public enum Decision: String, Codable, Sendable {
     case reject
 }
 
-/// A decision plus the ♥ flag. `isFavourite` implies `.keep`; `CullSession` keeps that true (R8).
+/// A decision plus two flags: ♥ favourite (R8), and "needs editing" for a photo whose RAW file wants more
+/// than basic adjustments (R28). Both imply `.keep`; `CullSession` keeps that true.
 public struct FrameMark: Hashable, Codable, Sendable {
     public var decision: Decision
     public var isFavourite: Bool
+    public var needsEdit: Bool
 
-    public init(decision: Decision = .undecided, isFavourite: Bool = false) {
+    public init(decision: Decision = .undecided, isFavourite: Bool = false, needsEdit: Bool = false) {
         self.decision = decision
         self.isFavourite = isFavourite
+        self.needsEdit = needsEdit
     }
 
-    /// The same mark with the favourite invariant enforced.
+    // Sessions saved before the edit flag existed have no `needsEdit`.
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        decision = try values.decode(Decision.self, forKey: .decision)
+        isFavourite = try values.decode(Bool.self, forKey: .isFavourite)
+        needsEdit = try values.decodeIfPresent(Bool.self, forKey: .needsEdit) ?? false
+    }
+
+    /// The same mark with the "flags imply Keep" invariant enforced.
     var normalised: FrameMark {
-        FrameMark(decision: decision, isFavourite: isFavourite && decision == .keep)
+        let isKeep = decision == .keep
+        return FrameMark(decision: decision, isFavourite: isFavourite && isKeep, needsEdit: needsEdit && isKeep)
     }
 }
 
@@ -27,12 +39,14 @@ public struct CullCounts: Equatable, Sendable {
     public var reject: Int
     public var undecided: Int
     public var favourite: Int
+    public var needsEdit: Int
 
-    public init(keep: Int, reject: Int, undecided: Int, favourite: Int) {
+    public init(keep: Int, reject: Int, undecided: Int, favourite: Int, needsEdit: Int = 0) {
         self.keep = keep
         self.reject = reject
         self.undecided = undecided
         self.favourite = favourite
+        self.needsEdit = needsEdit
     }
 }
 
@@ -42,6 +56,8 @@ public enum CullCommand: Equatable, Sendable {
     case keep
     case reject
     case toggleFavourite
+    /// `,`: flag the photo as needing a RAW edit (R28).
+    case toggleNeedsEdit
     case reset
     case next
     case previous

@@ -509,6 +509,22 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         #expect(done.executor.ledger.file(at: gone[0])?.trashPath == done.removal.trashed[0].trashPath)
     }
 
+    @Test func rejectingAPhotoArchivedUnderEditMeRemovesItFromThere() throws {
+        let world = try ApplyWorld()
+        let id = try world.addPair("DSCF0001", toEditMark)
+        try world.apply()
+        world.marks[id] = rejectMark
+
+        let done = try world.apply()
+
+        #expect(
+            done.removal.trashed.map(\.location) == [
+                world.location("DSCF0001.RAF", in: "RAW/Edit Me"), world.location("DSCF0001.JPG"),
+            ])
+        #expect(try world.archiveNames().filter { !$0.contains(".TestTrash") }.isEmpty)
+        #expect(try world.cardNames().isEmpty)
+    }
+
     @Test func aSecondRunAfterARemovalPlansNothingMore() throws {
         let (world, _) = try rejectedAfterArchiving()
         try world.apply()

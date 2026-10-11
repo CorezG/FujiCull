@@ -616,6 +616,7 @@ final class CullModel {
         case .keep: symbol = "✓"
         case .reject: symbol = "✕"
         case .toggleFavourite: symbol = mark.isFavourite ? "♥" : "♡"
+        case .toggleNeedsEdit: symbol = mark.needsEdit ? "✎" : "✐"
         default: return
         }
         flash = (symbol, (flash?.id ?? 0) + 1)

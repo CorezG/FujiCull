@@ -40,19 +40,21 @@ public struct ArchiveLocation: Codable, Hashable, Sendable {
     }
 }
 
-/// The folders FujiCull makes inside a trip folder: RAW files, JPGs, a staging copy of the JPGs for
-/// uploading to Google Photos, and videos. _Since 2026-10-11; earlier runs put RAW and JPG files directly in
+/// The folders FujiCull makes inside a trip folder: RAW files (those flagged as needing an edit in their
+/// own `Edit Me` folder, R28), JPGs, a staging copy of the JPGs for uploading to Google Photos, and videos. _Since 2026-10-11; earlier runs put RAW and JPG files directly in
 /// the trip folder, and those stay where they are._
 public enum ArchiveLayout {
     public static let raw = "RAW"
+    public static let rawToEdit = "RAW/Edit Me"
     public static let jpg = "JPG"
     public static let googlePhotos = "Google Photos"
     public static let videos = "Videos"
-    public static let subfolders = [raw, jpg, googlePhotos, videos]
+    public static let subfolders = [raw, rawToEdit, jpg, googlePhotos, videos]
 
-    public static func subfolder(for role: FileRole) -> String {
+    /// Where a new file of this kind goes. `needsEdit` is the frame's edit flag when it is first archived.
+    public static func subfolder(for role: FileRole, needsEdit: Bool = false) -> String {
         switch role {
-        case .raw: return raw
+        case .raw: return needsEdit ? rawToEdit : raw
         case .jpg: return jpg
         case .googlePhotos: return googlePhotos
         case .video: return videos

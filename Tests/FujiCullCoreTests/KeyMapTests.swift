@@ -14,6 +14,7 @@ import Testing
         (KeyPress(keyCode: 124, shift: true), .cull(.jump(10))),
         (KeyPress(keyCode: 44, characters: "/"), .cull(.toggleFavourite)),
         (KeyPress(keyCode: 47, characters: "."), .cull(.reset)),
+        (KeyPress(keyCode: 43, characters: ","), .cull(.toggleNeedsEdit)),
         (KeyPress(keyCode: 36), .toggleZoom),
         (KeyPress(keyCode: 39, characters: "'"), .cull(.toggleUndecidedFilter)),
         (KeyPress(keyCode: 51), .cull(.undo)),
@@ -45,5 +46,6 @@ import Testing
         // On some layouts "/" isn't on key 44; the typed character decides.
         #expect(KeyMap.action(for: KeyPress(keyCode: 26, characters: "/")) == .cull(.toggleFavourite))
         #expect(KeyMap.action(for: KeyPress(keyCode: 43, characters: ".")) == .cull(.reset))
+        #expect(KeyMap.action(for: KeyPress(keyCode: 47, characters: ",")) == .cull(.toggleNeedsEdit))
     }
 }

@@ -199,6 +199,7 @@ private struct StatusBar: View {
                 Spacer()
             }
             Text("\(counts.keep) kept").foregroundStyle(Color(red: 0.19, green: 0.82, blue: 0.35))
+            if counts.needsEdit > 0 { Text("\(counts.needsEdit) to edit").foregroundStyle(.orange) }
             Text("\(counts.reject) rejected").foregroundStyle(Color(red: 1, green: 0.27, blue: 0.23))
             Text("\(counts.undecided) undecided").foregroundStyle(.secondary)
             Text("\(position.index) / \(position.count)").padding(.leading, 6)
@@ -223,6 +224,7 @@ private struct DecisionChip: View {
             }
         HStack(spacing: 4) {
             if mark.isFavourite { Text("♥").foregroundStyle(Color(red: 1, green: 0.22, blue: 0.37)) }
+            if mark.needsEdit { Text("✎ Edit").foregroundStyle(.orange) }
             Text(label)
         }
         .font(.system(size: 11, weight: .semibold))

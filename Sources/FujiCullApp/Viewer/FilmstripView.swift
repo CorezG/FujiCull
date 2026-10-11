@@ -192,6 +192,8 @@ final class FilmstripCell: NSView {
     private let imageLayer = CALayer()
     private let barLayer = CALayer()
     private let heartLayer = CATextLayer()
+    /// ✎ on a frame flagged as needing a RAW edit (R28).
+    private let editLayer = CATextLayer()
     /// "RAF" or "JPG" on an unpaired frame (R4).
     private let badgeLayer = CATextLayer()
 
@@ -212,6 +214,12 @@ final class FilmstripCell: NSView {
         heartLayer.alignmentMode = .right
         heartLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
         layer.addSublayer(heartLayer)
+        editLayer.string = "✎"
+        editLayer.fontSize = 11
+        editLayer.foregroundColor = NSColor.systemOrange.cgColor
+        editLayer.alignmentMode = .right
+        editLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        layer.addSublayer(editLayer)
         badgeLayer.fontSize = 9
         badgeLayer.foregroundColor = NSColor.black.cgColor
         badgeLayer.backgroundColor = NSColor.systemYellow.cgColor
@@ -230,6 +238,7 @@ final class FilmstripCell: NSView {
         imageLayer.frame = bounds
         barLayer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 3)
         heartLayer.frame = NSRect(x: bounds.width - 18, y: bounds.height - 16, width: 15, height: 14)
+        editLayer.frame = NSRect(x: bounds.width - 32, y: bounds.height - 16, width: 15, height: 14)
         badgeLayer.frame = NSRect(x: 4, y: bounds.height - 15, width: 26, height: 12)
     }
 
@@ -244,6 +253,7 @@ final class FilmstripCell: NSView {
         case .undecided: barLayer.backgroundColor = NSColor.clear.cgColor
         }
         heartLayer.isHidden = !mark.isFavourite
+        editLayer.isHidden = !mark.needsEdit
         badgeLayer.string = unpaired
         badgeLayer.isHidden = unpaired == nil
         layer?.borderWidth = isCurrent ? 2 : 0

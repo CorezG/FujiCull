@@ -568,8 +568,18 @@ public final class ApplyExecutor {
         if let known = folders[key] { return known }
         if try io(try fs.entry(subfolder, in: trip)) == nil {
             guard create else { return nil }
-            try io(try fs.createFolder(subfolder, in: trip))
-            try io(try fs.syncToDevice(trip))
+            // One level at a time: `RAW`, then `RAW/Edit Me`. Each new folder's parent is synced, so the
+            // folder is durable before anything is put in it.
+            var path = ""
+            var parent = trip
+            for component in subfolder.split(separator: "/") {
+                path += (path.isEmpty ? "" : "/") + component
+                if try io(try fs.entry(path, in: trip)) == nil {
+                    try io(try fs.createFolder(path, in: trip))
+                    try io(try fs.syncToDevice(parent))
+                }
+                parent = try io(try fs.openFolder(path, in: trip))
+            }
         }
         let opened = try io(try fs.openFolder(subfolder, in: trip))
         folders[key] = opened

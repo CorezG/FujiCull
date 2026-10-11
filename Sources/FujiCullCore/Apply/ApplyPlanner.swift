@@ -87,12 +87,17 @@ public enum ApplyPlanner {
             let mark = input.marks[frame.id] ?? FrameMark()
             switch mark.decision {
             case .undecided: plan.leftOnCard.undecided.append(frame.id)
-            case .keep: planKeep(frame, favourite: mark.isFavourite)
+            case .keep: planKeep(frame, mark)
             case .reject: planReject(frame)
             }
         }
 
-        private mutating func planKeep(_ frame: Frame, favourite: Bool) {
+        private mutating func planKeep(_ frame: Frame, _ mark: FrameMark) {
+            let favourite = mark.isFavourite
+            // A photo flagged for editing has its RAW filed under `RAW/Edit Me`, and its JPG, which isn't good
+            // yet, is kept out of the Google Photos folder (R28). This is decided when the file is first
+            // archived; a file already on the archive is never moved.
+            let needsEdit = mark.needsEdit
             let owner = Owner.frame(frame.id)
             let captured = input.captureTimes[frame.id]
             var raw = frame.raf.flatMap { bound(owner, .raw, to: $0, captured: captured) }
@@ -112,7 +117,8 @@ public enum ApplyPlanner {
             var suffix: Int?
             if let first = recorded.first { suffix = suffixNumber(of: first.location.name) }
             var home = recorded.first?.destination ?? input.destination
-            var needsStaging = frame.jpg != nil && !(jpg.map { hasStagingCopy(owner, newerThan: $0) } ?? false)
+            var needsStaging =
+                frame.jpg != nil && !needsEdit && !(jpg.map { hasStagingCopy(owner, newerThan: $0) } ?? false)
             if let current = suffix {
                 let missing: [(FileRole, SourceFile)] = [
                     (.raw, raw == nil ? frame.raf : nil), (.jpg, jpg == nil ? frame.jpg : nil),
@@ -122,7 +128,8 @@ public enum ApplyPlanner {
                     missing.contains { role, file in
                         isTaken(
                             name(of: file, suffix: current),
-                            in: Folder(destination: home, subfolder: ArchiveLayout.subfolder(for: role)))
+                            in: Folder(
+                                destination: home, subfolder: ArchiveLayout.subfolder(for: role, needsEdit: needsEdit)))
                     }
                     || (needsStaging
                         && (frame.jpg.map {
@@ -132,7 +139,9 @@ public enum ApplyPlanner {
                 if blocked || input.copyAgain.contains(owner) {
                     let staging = files(of: owner).filter { $0.role == .googlePhotos && $0.status == .verified }
                     plan.superseded += (recorded + staging).map(\.location)
-                    (raw, jpg, suffix, home, needsStaging) = (nil, nil, nil, input.destination, frame.jpg != nil)
+                    (raw, jpg, suffix, home, needsStaging) = (
+                        nil, nil, nil, input.destination, frame.jpg != nil && !needsEdit
+                    )
                 }
             }
 
@@ -140,9 +149,13 @@ public enum ApplyPlanner {
                 (.raw, raw == nil ? frame.raf : nil), (.jpg, jpg == nil ? frame.jpg : nil),
             ]
             .compactMap { role, file in file.map { (role, $0) } }
-            let chosen = suffix ?? freeSuffix(for: toCopy, staging: needsStaging ? frame.jpg : nil, in: home)
+            let chosen =
+                suffix
+                ?? freeSuffix(for: toCopy, staging: needsStaging ? frame.jpg : nil, in: home, needsEdit: needsEdit)
             for (role, file) in toCopy {
-                let to = claim(name(of: file, suffix: chosen), in: home, subfolder: ArchiveLayout.subfolder(for: role))
+                let to = claim(
+                    name(of: file, suffix: chosen), in: home,
+                    subfolder: ArchiveLayout.subfolder(for: role, needsEdit: needsEdit))
                 plan.copies.append(
                     ApplyPlan.Copy(
                         owner: owner, role: role, source: .card(file), size: file.size, to: to, favourite: favourite))
@@ -263,7 +276,8 @@ public enum ApplyPlanner {
         /// The smallest suffix (1 means none) under which every file still to copy has a free name in the
         /// folder it goes to.
         private func freeSuffix(
-            for files: [(FileRole, SourceFile)], staging: SourceFile?, in destination: Ledger.Destination
+            for files: [(FileRole, SourceFile)], staging: SourceFile?, in destination: Ledger.Destination,
+            needsEdit: Bool
         ) -> Int {
             var suffix = 1
             while true {
@@ -272,7 +286,9 @@ public enum ApplyPlanner {
                     files.contains { role, file in
                         isTaken(
                             name(of: file, suffix: suffix),
-                            in: Folder(destination: destination, subfolder: ArchiveLayout.subfolder(for: role)))
+                            in: Folder(
+                                destination: destination,
+                                subfolder: ArchiveLayout.subfolder(for: role, needsEdit: needsEdit)))
                     }
                     || (staging.map { isTaken(name(of: $0, suffix: suffix), in: stage) } ?? false)
                 if !clash { return suffix }

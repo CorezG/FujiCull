@@ -177,3 +177,4 @@ final class ApplyWorld {
 let keepMark = FrameMark(decision: .keep)
 let favouriteMark = FrameMark(decision: .keep, isFavourite: true)
 let rejectMark = FrameMark(decision: .reject)
+let toEditMark = FrameMark(decision: .keep, needsEdit: true)

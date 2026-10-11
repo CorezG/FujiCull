@@ -105,6 +105,7 @@ private func input(
 
 private let keep = FrameMark(decision: .keep)
 private let favourite = FrameMark(decision: .keep, isFavourite: true)
+private let toEdit = FrameMark(decision: .keep, needsEdit: true)
 private let reject = FrameMark(decision: .reject)
 private let undecided = FrameMark()
 
@@ -355,6 +356,65 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
 
         #expect(plan.copies.map(\.source) == [.archive(atTop("DSCF0001.JPG"))])
         #expect(plan.copies.map(\.to) == [at("DSCF0001.JPG", in: "Google Photos")])
+    }
+
+    // MARK: Photos flagged for editing (R28)
+
+    @Test func aFlaggedPhotosRAWGoesUnderEditMeAndItsJPGStaysOutOfGooglePhotos() throws {
+        let plan = try ApplyPlanner.plan(input([a, b], marks: [toEdit, keep]))
+
+        #expect(
+            plan.copies.map(\.to.pathInTrip) == [
+                "RAW/Edit Me/DSCF0001.RAF", "JPG/DSCF0001.JPG",
+                "RAW/DSCF0002.RAF", "JPG/DSCF0002.JPG", "Google Photos/DSCF0002.JPG",
+            ])
+    }
+
+    @Test func aFlaggedFavouriteIsStillTaggedOnBothItsFiles() throws {
+        let plan = try ApplyPlanner.plan(
+            input([a], marks: [FrameMark(decision: .keep, isFavourite: true, needsEdit: true)]))
+
+        #expect(plan.copies.map(\.to.pathInTrip) == ["RAW/Edit Me/DSCF0001.RAF", "JPG/DSCF0001.JPG"])
+        #expect(plan.copies.map(\.favourite) == [true, true])
+    }
+
+    @Test func flaggingAPhotoAfterItWasArchivedMovesNothing() throws {
+        // The folder is chosen when the RAW is first copied. It is never moved afterwards.
+        let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
+        let existing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [toEdit], ledger: ledger, listings: [japan: existing]))
+
+        #expect(plan.copies.isEmpty && plan.superseded.isEmpty && plan.removals.isEmpty && plan.tagChanges.isEmpty)
+    }
+
+    @Test func unflaggingAPhotoArchivedUnderEditMeOnlyAddsItsGooglePhotosCopy() throws {
+        // It no longer needs editing, so its JPG now belongs in the upload folder. The RAW stays where it is.
+        let ledger =
+            archived(
+                try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF", in: "RAW/Edit Me"))
+            + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
+        let existing = ApplyInput.Listing(names: ["RAW/Edit Me": ["DSCF0001.RAF"], "JPG": ["DSCF0001.JPG"]])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: existing]))
+
+        #expect(plan.copies.map(\.to.pathInTrip) == ["Google Photos/DSCF0001.JPG"])
+    }
+
+    @Test func aNameTakenUnderEditMeGivesTheWholeFrameASuffix() throws {
+        let existing = ApplyInput.Listing(names: ["RAW/Edit Me": ["DSCF0001.RAF"]])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [toEdit], listings: [japan: existing]))
+
+        #expect(plan.copies.map(\.to.pathInTrip) == ["RAW/Edit Me/DSCF0001-2.RAF", "JPG/DSCF0001-2.JPG"])
+    }
+
+    @Test func theSameNameInRAWDoesNotCollideWithEditMe() throws {
+        let existing = listing(["DSCF0001.RAF"])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [toEdit], listings: [japan: existing]))
+
+        #expect(plan.copies.map(\.to.pathInTrip) == ["RAW/Edit Me/DSCF0001.RAF", "JPG/DSCF0001.JPG"])
     }
 
     // MARK: Favourites (R8, SR12)

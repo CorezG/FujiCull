@@ -52,6 +52,8 @@ public actor ApplyRun {
         public let recovery: ApplyExecutor.Recovery
         public let keepers: Int
         public let favourites: Int
+        /// Keepers flagged for editing whose RAW will be filed under `RAW/Edit Me` in this run (R28).
+        public let toEdit: Int
         public let rejects: Int
         public let undecided: Int
         public let videos: Int
@@ -118,7 +120,9 @@ public actor ApplyRun {
         let decisions = setup.frames.map { setup.marks[$0.id] ?? FrameMark() }
         return Preflight(
             plan: plan, recovery: recovery, keepers: decisions.count { $0.decision == .keep },
-            favourites: decisions.count { $0.isFavourite }, rejects: decisions.count { $0.decision == .reject },
+            favourites: decisions.count { $0.isFavourite },
+            toEdit: plan.copies.count { $0.to.subfolder == ArchiveLayout.rawToEdit },
+            rejects: decisions.count { $0.decision == .reject },
             undecided: decisions.count { $0.decision == .undecided },
             videos: plan.copies.count { $0.role == .video })
     }
