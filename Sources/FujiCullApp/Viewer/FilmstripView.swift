@@ -13,8 +13,10 @@ struct FilmstripView: NSViewRepresentable {
         case grid
     }
 
-    /// Strip height: cell plus 8 pt insets, with 12 pt of slack so the layout is always valid.
-    static let stripHeight = FilmstripCell.height + 28
+    /// Strip height: the cell, its insets and a little slack, plus room for the scroll bar underneath, so
+    /// the bar never takes space from the thumbnails.
+    static let stripHeight =
+        FilmstripCell.height + 28 + NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
 
     let model: CullModel
     var style: Style = .strip
@@ -71,14 +73,16 @@ struct FilmstripView: NSViewRepresentable {
     }
 }
 
-/// The strip's scroll view, whose scroll bar never takes room from the content. NSCollectionView switches the
-/// horizontal bar on for a horizontal layout; with a mouse attached it is the always-visible kind and takes
-/// 17 pt of the strip, which leaves too little room for the cells and makes AppKit warn on every layout pass
-/// (found at checkpoint C; docs/spikes/perf.md). Refusing the bar outright stops the strip scrolling to the
-/// current frame, so the bar stays but is always the overlay kind.
+/// The strip's scroll view, with a scroll bar that is always there to grab and drag through a long card
+/// (owner's request, 2026-10-11). `stripHeight` leaves room for it below the thumbnails.
+///
+/// History, so this isn't undone by accident: NSCollectionView switches the horizontal bar on for a
+/// horizontal layout. Without room for it the bar took 17 pt from the cells and AppKit warned on every
+/// layout pass; refusing the bar stopped the strip scrolling to the current frame; an overlay bar fixed both
+/// but can't be grabbed with a mouse (docs/spikes/perf.md).
 private final class StripScrollView: NSScrollView {
     override var scrollerStyle: NSScroller.Style {
-        get { .overlay }
+        get { .legacy }
         set {}
     }
 }
