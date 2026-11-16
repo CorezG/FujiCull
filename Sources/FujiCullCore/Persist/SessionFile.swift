@@ -42,12 +42,18 @@ public struct SessionFile: Codable, Equatable, Sendable {
         self.cursorFrameID = session.frameIDs.indices.contains(session.cursor) ? session.frameIDs[session.cursor] : nil
         self.undecidedOnly = session.undecidedOnly
         let byID = Dictionary(scanned.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        self.frames = session.storedMarks.compactMap { id, mark in
+        // Each sort key is made once, not once per comparison: this runs after every decision (FrameID.<).
+        self.frames = session.storedMarks.compactMap { id, mark -> (NaturalSortKey, StoredFrame)? in
             guard let frame = byID[id] else { return nil }
-            return StoredFrame(
-                id: id, jpgSize: frame.jpg?.size, rafSize: frame.raf?.size, captureTime: captureTimes[id], mark: mark)
+            return (
+                NaturalSortKey(id.rawValue),
+                StoredFrame(
+                    id: id, jpgSize: frame.jpg?.size, rafSize: frame.raf?.size, captureTime: captureTimes[id],
+                    mark: mark)
+            )
         }
-        .sorted { $0.id < $1.id }
+        .sorted { $0.0 < $1.0 }
+        .map(\.1)
     }
 }
 

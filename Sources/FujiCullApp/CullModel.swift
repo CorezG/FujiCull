@@ -56,6 +56,9 @@ final class CullModel {
     @ObservationIgnored private let store = SessionStore(directory: CullModel.supportDirectory())
     @ObservationIgnored private var sessionKey: String?
     @ObservationIgnored private var saveRevision = 0
+    /// A decided frame's capture time was read since the last save. Saved once when the background pass ends,
+    /// not once per frame: on a fully culled card that was ~2,000 saves in a row on the main thread.
+    @ObservationIgnored private var captureTimesUnsaved = false
     @ObservationIgnored private var pendingResume: CullSession?
     /// The saved session this source was restored from, and its decisions not yet confirmed by capture
     /// time (SR2). Path and sizes can repeat after a card is formatted; the moment a photo was taken can't.
@@ -384,6 +387,7 @@ final class CullModel {
     /// Queues a save of the current state; the store writes the latest one after a short pause (SR5).
     private func saveSoon() {
         guard let key = sessionKey else { return }
+        captureTimesUnsaved = false
         saveRevision += 1
         let file = SessionFile(
             key: key, rootHint: identityBase?.path ?? "", session: session, frames: frames,
@@ -414,7 +418,11 @@ final class CullModel {
             clearedDecisions += 1
             cleared = true
         }
-        if cleared || session.storedMarks[id] != nil { saveSoon() }
+        if cleared {
+            saveSoon()
+        } else if session.storedMarks[id] != nil {
+            captureTimesUnsaved = true
+        }
     }
 
     /// Quitting can't wait for an async task, so this blocks briefly until the latest state is on disk.
@@ -801,6 +809,7 @@ final class CullModel {
                 if Task.isCancelled || generation != self.generation { return }
                 await fetchHeader(index: index, priority: .background)
             }
+            if generation == self.generation, captureTimesUnsaved { saveSoon() }
         }
     }
 

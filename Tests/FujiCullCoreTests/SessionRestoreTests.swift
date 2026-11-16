@@ -270,3 +270,42 @@ extension RestoreOutcome {
         return false
     }
 }
+
+// A session is saved after every decision, so building the file must stay cheap on a full card.
+@Suite struct SessionFileSpeedTests {
+    @Test func storedFramesAreInNaturalOrder() {
+        let frames = [frame("DSCF10"), frame("DSCF9"), frame("dscf0011")]
+        var session = CullSession(frameIDs: frames.map(\.id))
+        for _ in frames {
+            session.apply(.keep)
+        }
+        let file = SessionFile(key: "k", rootHint: "", session: session, frames: frames)
+        #expect(file.frames.map(\.id.rawValue.lastPathComponentOfID) == ["DSCF9", "DSCF10", "dscf0011"])
+    }
+
+    @Test func aSessionWithTwoThousandDecidedFramesIsBuiltInUnder100Milliseconds() {
+        let frames = (1...2000).map { frame(String(format: "DSCF%04d", $0)) }
+        var session = CullSession(frameIDs: frames.map(\.id))
+        for _ in frames {
+            session.apply(.keep)
+        }
+        #expect(session.storedMarks.count == 2000)
+
+        // Tests run unoptimised: this took 310 ms when every comparison rebuilt both sort keys, and takes
+        // about 57 ms here (7 ms in the release build) with each key made once. Best of three, so a
+        // momentarily busy machine doesn't fail the build.
+        let clock = ContinuousClock()
+        var best = Duration.seconds(60)
+        var file: SessionFile?
+        for _ in 1...3 {
+            best = min(
+                best, clock.measure { file = SessionFile(key: "k", rootHint: "", session: session, frames: frames) })
+        }
+        #expect(file?.frames.count == 2000)
+        #expect(best < .milliseconds(100), "best build took \(best)")
+    }
+}
+
+extension String {
+    fileprivate var lastPathComponentOfID: String { split(separator: "/").last.map(String.init) ?? self }
+}
