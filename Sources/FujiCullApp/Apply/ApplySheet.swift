@@ -225,6 +225,13 @@ private struct PreflightView: View {
                     "Keepers from an earlier run are in “\(plan.unreachableDestinations.map(\.folder).joined(separator: "”, “"))”, which can't be found. Nothing will be deleted from the card until it can be checked."
             )
         }
+        if model.archiveLinkIsSlow, preflight.copyBytes > 0 {
+            Note(
+                symbol: "tortoise.fill",
+                text:
+                    "\(model.archive?.name ?? "The archive") is connected at USB 2 speed, so this copy will take about \(plural(CopyEstimate.minutesOverSlowLink(bytes: preflight.copyBytes), "minute", "minutes")). Plugged straight into a USB 3 or USB-C port with a USB 3 cable, it is several times faster."
+            )
+        }
         if !plan.superseded.isEmpty {
             Note(
                 symbol: "doc.on.doc",
@@ -305,7 +312,10 @@ private struct CopyingView: View {
     let model: ApplyModel
 
     var body: some View {
-        Title(text: "Copying to \(model.archive?.name ?? "the archive")")
+        Title(
+            text: model.checkingEarlierCopies
+                ? "Checking earlier copies on \(model.archive?.name ?? "the archive")"
+                : "Copying to \(model.archive?.name ?? "the archive")")
         ProgressView(value: Double(model.bytesDone), total: Double(max(model.bytesTotal, 1)))
         HStack {
             Text("\(bytes(model.bytesDone)) of \(bytes(model.bytesTotal))")
@@ -314,7 +324,9 @@ private struct CopyingView: View {
         }
         .font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 6)
         Text(
-            "Each file is read back from the drive and compared before it counts. Nothing is deleted during this step. Keep both drives connected."
+            model.checkingEarlierCopies
+                ? "Keepers copied by earlier runs are read again in full, so nothing is deleted on the strength of an old record. Nothing is deleted during this step. Keep both drives connected."
+                : "Each file is read back from the drive and compared before it counts. Nothing is deleted during this step. Keep both drives connected."
         )
         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(
             .top, 14)

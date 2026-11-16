@@ -597,13 +597,20 @@ public final class ApplyExecutor {
         }
     }
 
-    func hash(_ path: String, in folder: OpenFolder) throws(ApplyStop) -> String {
+    func hash(
+        _ path: String, in folder: OpenFolder, isCancelled: () -> Bool = { false },
+        onProgress: (_ bytesRead: Int64) -> Void = { _ in }
+    ) throws(ApplyStop) -> String {
         let file = try io(try fs.openForReading(path, in: folder))
         var hasher = SHA256()
+        var read: Int64 = 0
         while true {
+            if isCancelled() { throw .cancelled }
             let chunk = try io(try fs.read(file, upTo: 8 * 1024 * 1024))
             if chunk.isEmpty { break }
             hasher.update(data: chunk)
+            read += Int64(chunk.count)
+            onProgress(read)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }

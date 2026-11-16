@@ -135,10 +135,12 @@ public actor ApplyRun {
 
     /// Copies, verifies and tags, then checks every keeper on the archive and works out whether anything
     /// may be removed. Deletes nothing. `addToExistingFolder` is the owner's answer when the trip folder
-    /// already exists and this card's journal doesn't know it.
+    /// already exists and this card's journal doesn't know it. `onCheckProgress` reports the re-reading of
+    /// keepers archived by earlier runs, which follows the copy when nothing went wrong.
     public func copy(
         addToExistingFolder: Bool = false,
-        onProgress: @Sendable (_ bytesDone: Int64, _ bytesTotal: Int64) -> Void = { _, _ in }
+        onProgress: @Sendable (_ bytesDone: Int64, _ bytesTotal: Int64) -> Void = { _, _ in },
+        onCheckProgress: @Sendable (_ bytesDone: Int64, _ bytesTotal: Int64) -> Void = { _, _ in }
     ) throws(ApplyStop) -> CopyReport {
         guard var plan else { throw .gateClosed }
         if plan.destinationState == .existsNotOurs, !addToExistingFolder {
@@ -161,7 +163,7 @@ public actor ApplyRun {
         self.plan = plan
 
         let check = try executor.finalCheck()
-        let gate = try executor.gate(plan: plan, outcome: outcome, check: check)
+        let gate = try executor.gate(plan: plan, outcome: outcome, check: check, onProgress: onCheckProgress)
         copied = (outcome, check, gate)
         let toTrash = plan.removals.flatMap(\.files)
         let toDelete = plan.cardDeletes.flatMap(\.paths)

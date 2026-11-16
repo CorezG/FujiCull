@@ -69,8 +69,10 @@ extension ApplyExecutor {
     /// Removal is allowed only if the copy run finished, every destination was reachable, the final check
     /// found every keeper on the archive, and every keeper file that this run didn't itself hash from the
     /// device still hashes to what was recorded.
+    /// `onProgress` reports the bytes read so far and the total while earlier copies are read again.
     public func gate(
-        plan: ApplyPlan, outcome: CopyOutcome, check: FinalCheck, isCancelled: () -> Bool = { Task.isCancelled }
+        plan: ApplyPlan, outcome: CopyOutcome, check: FinalCheck, isCancelled: () -> Bool = { Task.isCancelled },
+        onProgress: (_ bytesDone: Int64, _ bytesTotal: Int64) -> Void = { _, _ in }
     ) throws(ApplyStop) -> Gate {
         var blockers: [Gate.Blocker] = []
         if let stopped = outcome.stopped { blockers.append(.copyStopped(stopped)) }
@@ -78,8 +80,9 @@ extension ApplyExecutor {
         blockers += check.problems.map { .keeperNotOnArchive($0) }
         guard blockers.isEmpty else { return Gate(blockers: blockers) }
 
+        // Keeper files this run did not itself copy and verify are read again in full (SR17).
+        var earlier: [(file: Ledger.ArchiveFile, folder: OpenFolder)] = []
         for keeper in keeperFiles() {
-            if isCancelled() { throw .cancelled }
             guard
                 let archived = ledger.boundFile(
                     among: ledger.files(of: keeper.owner), role: keeper.role, to: keeper.file, captured: keeper.captured
@@ -87,9 +90,18 @@ extension ApplyExecutor {
                 !verifiedThisRun.contains(archived.location),
                 let folder = try folder(for: archived.location, create: false)
             else { continue }
-            if try hash(archived.location.name, in: folder) != archived.sha256 {
-                blockers.append(.earlierCopyChanged(archived.location))
-            }
+            earlier.append((archived, folder))
+        }
+        let total = earlier.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
+        var done: Int64 = 0
+        for (archived, folder) in earlier {
+            if isCancelled() { throw .cancelled }
+            let sha = try hash(
+                archived.location.name, in: folder, isCancelled: isCancelled,
+                onProgress: { onProgress(done + $0, total) })
+            if sha != archived.sha256 { blockers.append(.earlierCopyChanged(archived.location)) }
+            done += archived.size ?? 0
+            onProgress(done, total)
         }
         return Gate(blockers: blockers)
     }

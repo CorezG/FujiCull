@@ -1,5 +1,6 @@
 import AppKit
 import FujiCullCore
+import IOKit
 import Observation
 
 /// A drive Apply could archive to: external, writable, with a volume ID, and not the card itself.
@@ -10,6 +11,26 @@ struct ArchiveVolume: Identifiable, Hashable {
     let freeBytes: Int64
 
     var id: String { uuid }
+
+    /// The speed of the USB link the drive is on, in bits per second, as macOS reports it; nil when the drive
+    /// isn't on USB or the speed can't be read. Read-only: this only looks the drive up in the I/O registry.
+    var usbLinkBitsPerSecond: Int64? {
+        var info = statfs()
+        guard statfs(path, &info) == 0 else { return nil }
+        let device = withUnsafeBytes(of: &info.f_mntfromname) {
+            String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        guard device.hasPrefix("/dev/"),
+            let matching = IOBSDNameMatching(kIOMainPortDefault, 0, String(device.dropFirst(5)))
+        else { return nil }
+        let media = IOServiceGetMatchingService(kIOMainPortDefault, matching)
+        guard media != 0 else { return nil }
+        defer { IOObjectRelease(media) }
+        let speed = IORegistryEntrySearchCFProperty(
+            media, kIOServicePlane, "UsbLinkSpeed" as CFString, kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents))
+        return (speed as? NSNumber)?.int64Value
+    }
 
     /// Every mounted volume that qualifies, and where each volume with an ID is mounted (SR7).
     static func mounted(excluding source: URL?) -> (candidates: [ArchiveVolume], roots: [String: String]) {
@@ -65,6 +86,10 @@ final class ApplyModel {
     private(set) var bytesDone: Int64 = 0
     private(set) var bytesTotal: Int64 = 0
     private(set) var copyStarted: Date?
+    /// True once copying is done and keepers archived by earlier runs are being read again (SR17).
+    private(set) var checkingEarlierCopies = false
+    /// Set at pre-flight when the archive drive is on a USB 2.0 link, where a copy takes several times longer.
+    private(set) var archiveLinkIsSlow = false
 
     @ObservationIgnored private unowned let host: CullModel
     @ObservationIgnored private var run: ApplyRun?
@@ -120,6 +145,7 @@ final class ApplyModel {
             let preflight = try await run.preflight()
             addToExistingFolder = false
             removeLeftovers = false
+            archiveLinkIsSlow = CopyEstimate.isSlowLink(bitsPerSecond: archive.usbLinkBitsPerSecond)
             stage = .preflight(preflight)
         } catch {
             run = nil
@@ -143,6 +169,7 @@ final class ApplyModel {
         bytesDone = 0
         bytesTotal = preflight.copyBytes
         copyStarted = Date()
+        checkingEarlierCopies = false
         stage = .copying
         // Keeps the Mac awake for the whole run (R23).
         activity = ProcessInfo.processInfo.beginActivity(
@@ -154,7 +181,10 @@ final class ApplyModel {
                 if clearLeftovers { try await run.removeStrayPartials() }
                 let report = try await run.copy(
                     addToExistingFolder: agreed,
-                    onProgress: { done, total in Task { @MainActor [weak self] in self?.progress(done, total) } })
+                    onProgress: { done, total in Task { @MainActor [weak self] in self?.progress(done, total) } },
+                    onCheckProgress: { done, total in
+                        Task { @MainActor [weak self] in self?.checkProgress(done, total) }
+                    })
                 if let confirmation = report.confirmation {
                     stage = .confirming(report, confirmation)
                 } else {
@@ -170,6 +200,16 @@ final class ApplyModel {
 
     private func progress(_ done: Int64, _ total: Int64) {
         guard case .copying = stage else { return }
+        bytesDone = done
+        bytesTotal = total
+    }
+
+    private func checkProgress(_ done: Int64, _ total: Int64) {
+        guard case .copying = stage else { return }
+        if !checkingEarlierCopies {
+            checkingEarlierCopies = true
+            copyStarted = Date()
+        }
         bytesDone = done
         bytesTotal = total
     }

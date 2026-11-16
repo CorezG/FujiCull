@@ -245,6 +245,32 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         #expect(try world.cardNames() == before)
     }
 
+    @Test func checkingEarlierCopiesReportsProgressUpToTheirTotalSize() throws {
+        // Two keepers archived by an earlier run are read again in full before anything may be deleted.
+        let world = try ApplyWorld()
+        try world.addPair("DSCF0001", keepMark)
+        try world.addPair("DSCF0002", keepMark)
+        try world.apply()
+        try world.addPair("DSCF0003", rejectMark)
+
+        let executor = try world.executor()
+        _ = try executor.recover()
+        let plan = try executor.makePlan()
+        let copy = executor.copy(plan, isCancelled: { false })
+        let check = try executor.finalCheck()
+        var reports: [(done: Int64, total: Int64)] = []
+        let gate = try executor.gate(
+            plan: plan, outcome: copy, check: check, isCancelled: { false },
+            onProgress: { reports.append(($0, $1)) })
+
+        #expect(gate.allowsRemoval)
+        // The RAW and the JPG of each of the two keepers.
+        let total: Int64 = 2 * (3_000 + 1_200)
+        #expect(reports.allSatisfy { $0.total == total })
+        #expect(reports.map(\.done) == reports.map(\.done).sorted())
+        #expect(reports.last?.done == total)
+    }
+
     @Test func aKeeperArchivedEarlierThatNoLongerHashesTheSameClosesTheGate() throws {
         // Same size, so the final check passes; the gate reads the file and finds different bytes.
         let world = try standardWorld()
