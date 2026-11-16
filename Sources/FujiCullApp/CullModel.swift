@@ -263,8 +263,8 @@ final class CullModel {
 
     private func volumeUnmounted(_ volume: URL?) {
         refreshCards()
-        // Either drive going away stops a running Apply at once (R23).
-        apply?.volumeUnmounted()
+        // The card or the archive going away stops a running Apply at once (R23); other volumes don't.
+        apply?.volumeUnmounted(volume)
         apply?.refreshVolumes()
         if let volume, let sourceVolume, volume.standardizedFileURL == sourceVolume.standardizedFileURL, apply == nil {
             close()

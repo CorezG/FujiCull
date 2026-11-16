@@ -179,9 +179,14 @@ final class ApplyModel {
         copyTask?.cancel()
     }
 
-    /// A drive went away: stop at once (R23). Any I/O in progress fails on its own as well.
-    func volumeUnmounted() {
-        if case .copying = stage { copyTask?.cancel() }
+    /// A volume went away. If it was the card or the archive, stop at once (R23); any I/O in progress fails on
+    /// its own as well. Other volumes (macOS's own Recovery volume, disk images) are none of Apply's business.
+    func volumeUnmounted(_ volume: URL?) {
+        guard case .copying = stage else { return }
+        let archiveURL = archive.map { URL(fileURLWithPath: $0.path) }
+        if RunVolumes.unmountStopsRun(volume, card: host.sourceVolumeURL, archive: archiveURL) {
+            copyTask?.cancel()
+        }
     }
 
     func finish(confirmed: Bool) async {
