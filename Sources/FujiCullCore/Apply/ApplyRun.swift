@@ -171,7 +171,9 @@ public actor ApplyRun {
         return CopyReport(
             outcome: outcome, check: check, blockers: gate.blockers,
             confirmation: gate.allowsRemoval && !nothing
-                ? ApplyExecutor.Confirmation(toTrash: toTrash, toDelete: toDelete, deleteMode: plan.deleteMode) : nil)
+                ? ApplyExecutor.Confirmation(
+                    toTrash: toTrash, toDelete: toDelete, deleteMode: plan.deleteMode,
+                    notForGooglePhotos: plan.notForGooglePhotosCount) : nil)
     }
 
     /// Removes what was confirmed, if the gate allows it, and returns the summary of the whole run.

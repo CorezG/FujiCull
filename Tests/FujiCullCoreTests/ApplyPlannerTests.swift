@@ -169,7 +169,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let rafOnly = Frame(id: FrameID("DCIM/124_FUJI/DSCF0004"), jpg: nil, raf: raf("DSCF0004"))
         let jpgOnly = Frame(id: FrameID("DCIM/124_FUJI/DSCF0005"), jpg: jpg("DSCF0005"), raf: nil)
 
-        let plan = try ApplyPlanner.plan(input([rafOnly, jpgOnly], marks: [keep, keep]))
+        let plan = try ApplyPlanner.plan(input([rafOnly, jpgOnly], marks: [favourite, favourite]))
 
         #expect(names(plan.copies) == ["DSCF0004.RAF", "DSCF0005.JPG", "Google Photos/DSCF0005.JPG"])
     }
@@ -192,7 +192,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
-            input([a, c], marks: [keep, keep], ledger: ledger, listings: [japan: listing]))
+            input([a, c], marks: [favourite, favourite], ledger: ledger, listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0003.RAF", "DSCF0003.JPG", "Google Photos/DSCF0003.JPG"])
     }
@@ -204,7 +204,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["Google Photos/DSCF0001.JPG"])
         #expect(plan.copies.first?.source == .archive(at("DSCF0001.JPG")))
@@ -294,7 +294,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         }
 
         let plan = try ApplyPlanner.plan(
-            input([a], marks: [keep], ledger: ledger, listings: [japan: ApplyInput.Listing()]))
+            input([a], marks: [favourite], ledger: ledger, listings: [japan: ApplyInput.Listing()]))
 
         #expect(names(plan.copies) == ["DSCF0001.RAF", "DSCF0001.JPG", "Google Photos/DSCF0001.JPG"])
     }
@@ -340,7 +340,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let other = pair("DSCF0001", folder: "DCIM/125_FUJI")
         let old = ApplyInput.Listing(names: [nil: ["DSCF0001.RAF", "DSCF0001.JPG"]])
 
-        let plan = try ApplyPlanner.plan(input([other], marks: [keep], listings: [japan: old]))
+        let plan = try ApplyPlanner.plan(input([other], marks: [favourite], listings: [japan: old]))
 
         #expect(
             plan.copies.map(\.to.pathInTrip) == ["RAW/DSCF0001.RAF", "JPG/DSCF0001.JPG", "Google Photos/DSCF0001.JPG"])
@@ -352,16 +352,91 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: atTop("DSCF0001.JPG"))
         let old = ApplyInput.Listing(names: [nil: ["DSCF0001.RAF", "DSCF0001.JPG"]])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: old]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: old]))
 
         #expect(plan.copies.map(\.source) == [.archive(atTop("DSCF0001.JPG"))])
         #expect(plan.copies.map(\.to) == [at("DSCF0001.JPG", in: "Google Photos")])
     }
 
+    // MARK: Google Photos holds favourites only (R29)
+
+    @Test func aKeeperThatIsNotAFavouriteGetsNoGooglePhotosCopy() throws {
+        let plan = try ApplyPlanner.plan(input([a, b], marks: [keep, favourite]))
+
+        #expect(
+            names(plan.copies) == [
+                "DSCF0001.RAF", "DSCF0001.JPG", "DSCF0002.RAF", "DSCF0002.JPG", "Google Photos/DSCF0002.JPG",
+            ])
+    }
+
+    @Test func aGooglePhotosCopyOfAKeeperThatIsNoLongerAFavouriteIsPlannedForTheTrash() throws {
+        let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+
+        #expect(
+            plan.removals == [
+                ApplyPlan.Removal(
+                    frame: a.id, files: [at("DSCF0001.JPG", in: "Google Photos")], kind: .notForGooglePhotos)
+            ])
+        #expect(plan.copies.isEmpty && plan.cardDeletes.isEmpty)
+    }
+
+    @Test func aFavouriteFlaggedForEditingAfterwardsLosesItsGooglePhotosCopyButNothingElse() throws {
+        let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
+        let listing = listing(
+            ["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"],
+            favourites: ["DSCF0001.RAF", "DSCF0001.JPG"])
+
+        let plan = try ApplyPlanner.plan(
+            input(
+                [a], marks: [FrameMark(decision: .keep, isFavourite: true, needsEdit: true)], ledger: ledger,
+                listings: [japan: listing]))
+
+        #expect(plan.removals.flatMap(\.files) == [at("DSCF0001.JPG", in: "Google Photos")])
+        #expect(plan.copies.isEmpty && plan.superseded.isEmpty && plan.tagChanges.isEmpty)
+    }
+
+    @Test func aGooglePhotosCopyThatIsAlreadyGoneIsNotPlannedForTheTrash() throws {
+        // Emptying the folder after uploading is expected; a copy that has gone is left gone.
+        let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+
+        #expect(plan.removals.isEmpty)
+    }
+
+    @Test func favouritingAnArchivedKeeperAddsItsGooglePhotosCopyFromTheArchiveJPG() throws {
+        let ledger =
+            archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF"))
+            + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
+
+        #expect(names(plan.copies) == ["Google Photos/DSCF0001.JPG"])
+        #expect(plan.copies.first?.source == .archive(at("DSCF0001.JPG")))
+        #expect(plan.removals.isEmpty)
+    }
+
+    @Test func aFavouriteThatWasUnfavouritedAndTrashedGetsANewCopyWhenFavouritedAgain() throws {
+        let staged = at("DSCF0001.JPG", in: "Google Photos")
+        let ledger =
+            archivedPair(a, captured: taken(0), as: "DSCF0001")
+            + [.trashing(location: staged), .trashed(location: staged, trashPath: nil)]
+        let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
+
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
+
+        #expect(names(plan.copies) == ["Google Photos/DSCF0001.JPG"])
+    }
+
     // MARK: Photos flagged for editing (R28)
 
     @Test func aFlaggedPhotosRAWGoesUnderEditMeAndItsJPGStaysOutOfGooglePhotos() throws {
-        let plan = try ApplyPlanner.plan(input([a, b], marks: [toEdit, keep]))
+        let plan = try ApplyPlanner.plan(input([a, b], marks: [toEdit, favourite]))
 
         #expect(
             plan.copies.map(\.to.pathInTrip) == [
@@ -379,9 +454,10 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     }
 
     @Test func flaggingAPhotoAfterItWasArchivedMovesNothing() throws {
-        // The folder is chosen when the RAW is first copied. It is never moved afterwards.
+        // The folder is chosen when the RAW is first copied. It is never moved afterwards. (Its Google Photos
+        // copy, had it still been there, would go: aFavouriteFlaggedForEditingAfterwardsLoses….)
         let ledger = archivedPair(a, captured: taken(0), as: "DSCF0001")
-        let existing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
+        let existing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: [])
 
         let plan = try ApplyPlanner.plan(input([a], marks: [toEdit], ledger: ledger, listings: [japan: existing]))
 
@@ -396,7 +472,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
         let existing = ApplyInput.Listing(names: ["RAW/Edit Me": ["DSCF0001.RAF"], "JPG": ["DSCF0001.JPG"]])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: existing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: existing]))
 
         #expect(plan.copies.map(\.to.pathInTrip) == ["Google Photos/DSCF0001.JPG"])
     }
@@ -472,7 +548,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aNameAlreadyOnTheArchiveGivesTheWholeFrameASuffix() throws {
         let listing = listing(["DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
         #expect(plan.destinationState == .existsNotOurs)
@@ -481,7 +557,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func aCollisionOnlyInGooglePhotosStillMovesTheWholeFrame() throws {
         let listing = listing(googlePhotos: ["DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
     }
@@ -489,7 +565,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     @Test func namesAreComparedIgnoringCaseAndTheNextFreeSuffixIsUsed() throws {
         let listing = listing(["dscf0001.raf", "DSCF0001-2.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0001-3.RAF", "DSCF0001-3.JPG", "Google Photos/DSCF0001-3.JPG"])
     }
@@ -498,7 +574,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         // The camera's counter wrapped, or two folders hold the same number.
         let other = pair("DSCF0001", folder: "DCIM/125_FUJI")
 
-        let plan = try ApplyPlanner.plan(input([a, other], marks: [keep, keep]))
+        let plan = try ApplyPlanner.plan(input([a, other], marks: [favourite, favourite]))
 
         #expect(
             names(plan.copies) == [
@@ -522,7 +598,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let ledger = archived(try #require(a.raf), as: .raw, of: a, captured: taken(0), at: at("DSCF0001.RAF"))
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
         #expect(plan.superseded == [at("DSCF0001.RAF")], "left where it is, and never removed")
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
@@ -535,7 +611,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
             + archived(try #require(a.jpg), as: .jpg, of: a, captured: taken(0), at: at("DSCF0001.JPG"))
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
         #expect(plan.superseded == [at("DSCF0001.RAF"), at("DSCF0001.JPG")])
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
@@ -546,7 +622,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
-            input([a], marks: [keep], ledger: ledger, listings: [japan: listing], copyAgain: [.frame(a.id)]))
+            input([a], marks: [favourite], ledger: ledger, listings: [japan: listing], copyAgain: [.frame(a.id)]))
 
         #expect(plan.superseded == [at("DSCF0001.RAF"), at("DSCF0001.JPG"), at("DSCF0001.JPG", in: "Google Photos")])
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
@@ -568,7 +644,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
-            input([a], marks: [keep], captured: [taken(30)], ledger: ledger, listings: [japan: listing]))
+            input([a], marks: [favourite], captured: [taken(30)], ledger: ledger, listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
         #expect(
@@ -609,7 +685,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
         let plan = try ApplyPlanner.plan(
-            input([a], marks: [keep], captured: [nil], ledger: ledger, listings: [japan: listing]))
+            input([a], marks: [favourite], captured: [nil], ledger: ledger, listings: [japan: listing]))
 
         #expect(plan.copies.count == 3)
     }
@@ -621,7 +697,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
             + [.deleting(path: "DCIM/124_FUJI/DSCF0001.RAF"), .deleted(path: "DCIM/124_FUJI/DSCF0001.RAF")]
         let listing = listing(["DSCF0001.RAF", "DSCF0001.JPG"], googlePhotos: ["DSCF0001.JPG"])
 
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep], ledger: ledger, listings: [japan: listing]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite], ledger: ledger, listings: [japan: listing]))
 
         #expect(names(plan.copies) == ["DSCF0001-2.RAF", "DSCF0001-2.JPG", "Google Photos/DSCF0001-2.JPG"])
     }
@@ -633,7 +709,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
         let listing = listing(["DSCF0002.RAF", "DSCF0002.JPG"], googlePhotos: ["DSCF0002.JPG"])
 
         let plan = try ApplyPlanner.plan(
-            input([a, b], marks: [keep, reject], ledger: ledger, listings: [japan: listing], readOnly: true))
+            input([a, b], marks: [favourite, reject], ledger: ledger, listings: [japan: listing], readOnly: true))
 
         #expect(plan.copies.count == 3)
         #expect(plan.removals.map(\.frame) == [b.id])
@@ -726,7 +802,7 @@ private func names(_ copies: [ApplyPlan.Copy]) -> [String] {
     // MARK: Space (SR14)
 
     @Test func spaceCountsWholeAllocationUnitsACompanionFileEachAndAMargin() throws {
-        let plan = try ApplyPlanner.plan(input([a], marks: [keep]))
+        let plan = try ApplyPlanner.plan(input([a], marks: [favourite]))
 
         let unit: Int64 = 131_072
         let rafUnits = (rafSize + unit - 1) / unit

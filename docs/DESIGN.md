@@ -247,8 +247,9 @@ _Revised 2026-10-09 after two [doubt-review](reviews/2026-10-09-apply-doubt-revi
   - If more than one listing entry matches a name, Apply stops and asks.
 - **Copies** (SR9):
   - One per Keep-frame archive file or video without a `verified` record that binds to it (SR2).
-  - A **Google Photos copy** is planned for a Keep frame whose Google Photos file has no `verified` record newer than its archive JPG's. It's made from the archive JPG. The bytes are hashed as they stream and must equal the SHA-256 recorded from the card; if they don't, no copy is made and the frame is reported.
-  - `Google Photos/` is a disposable staging folder: once a copy has been verified, FujiCull never recreates it (unless the frame's archive JPG is itself copied again), never requires it, and never complains if it has gone.
+  - A **Google Photos copy** is planned for a ♥ favourite Keep frame not flagged for editing (R29) whose Google Photos file has no `verified` record newer than its archive JPG's. It's made from the archive JPG. The bytes are hashed as they stream and must equal the SHA-256 recorded from the card; if they don't, no copy is made and the frame is reported.
+  - `Google Photos/` is a disposable staging folder: once a copy has been verified, FujiCull never recreates it (unless the frame's archive JPG is itself copied again, or the copy was trashed and the frame is a favourite again), never requires it, and never complains if it has gone.
+  - A Keep frame that no longer qualifies (not a favourite, or flagged for editing) has its verified Google Photos copy planned for the Trash if the listing still shows it: a `Removal` of kind `.notForGooglePhotos` naming that one file. The executor checks this for itself: for a frame that isn't rejected, it trashes only a `googlePhotos`-role file, only for a removal of that kind, and only while the frame's mark still says it doesn't qualify. The frame's RAW and JPG are never removable this way (R29, 2026-11-17).
 - **Names** (SR11):
   - A frame keeps one name across all of its files, each in its own folder. A name is checked in the folder the file goes to: `RAW/` for the RAF, `JPG/` for the JPG, `Google Photos/` for the staging copy.
   - If the frame already has a `reserve` for that name, it **reuses** it, provided the name is still free.

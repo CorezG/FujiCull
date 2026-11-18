@@ -28,6 +28,9 @@ extension ApplyExecutor {
         public let toDelete: [String]
         /// `.permanent` on a camera card: this cannot be undone.
         public let deleteMode: ApplyPlan.DeleteMode
+        /// How many of `toTrash` are Google Photos copies of keepers that no longer belong there (R29); the
+        /// rest belong to frames rejected after archiving.
+        public var notForGooglePhotos = 0
     }
 
     public struct RemovalOutcome: Equatable, Sendable {
@@ -146,7 +149,7 @@ extension ApplyExecutor {
         }
         let confirmation = Confirmation(
             toTrash: plan.removals.flatMap(\.files), toDelete: plan.cardDeletes.flatMap(\.paths),
-            deleteMode: plan.deleteMode)
+            deleteMode: plan.deleteMode, notForGooglePhotos: plan.notForGooglePhotosCount)
         if confirmation.toTrash.isEmpty && confirmation.toDelete.isEmpty { return outcome }
         guard confirm(confirmation) else {
             outcome.declined = true
@@ -168,7 +171,13 @@ extension ApplyExecutor {
     ) throws(ApplyStop) {
         for removal in plan.removals {
             if isCancelled() { throw .cancelled }
-            guard context.marks[removal.frame]?.decision == .reject else {
+            // The engine checks the decision itself (SR18). A rejected frame's archive copies may go. A keeper's
+            // only ever its Google Photos copy, and only when it no longer belongs there (R29): its RAW and JPG
+            // are never removed.
+            let mark = context.marks[removal.frame] ?? FrameMark()
+            let googlePhotosOnly =
+                removal.kind == .notForGooglePhotos && mark.decision == .keep && !(mark.isFavourite && !mark.needsEdit)
+            guard mark.decision == .reject || googlePhotosOnly else {
                 outcome.skipped.append(.init(frame: removal.frame, reason: .notRejected))
                 continue
             }
@@ -180,6 +189,10 @@ extension ApplyExecutor {
                     file.status == .verified || file.status == .trashing
                 else {
                     problem = .notThisFramesFile(location.name)
+                    break
+                }
+                if mark.decision != .reject, file.role != .googlePhotos {
+                    problem = .notRejected
                     break
                 }
                 let unchanged = try unchangedFolder(of: file)

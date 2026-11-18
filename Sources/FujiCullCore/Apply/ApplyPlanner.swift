@@ -98,6 +98,8 @@ public enum ApplyPlanner {
             // yet, is kept out of the Google Photos folder (R28). This is decided when the file is first
             // archived; a file already on the archive is never moved.
             let needsEdit = mark.needsEdit
+            // Google Photos holds favourites only, and never a photo still waiting for its RAW edit (R29).
+            let forGooglePhotos = favourite && !needsEdit
             let owner = Owner.frame(frame.id)
             let captured = input.captureTimes[frame.id]
             var raw = frame.raf.flatMap { bound(owner, .raw, to: $0, captured: captured) }
@@ -118,7 +120,8 @@ public enum ApplyPlanner {
             if let first = recorded.first { suffix = suffixNumber(of: first.location.name) }
             var home = recorded.first?.destination ?? input.destination
             var needsStaging =
-                frame.jpg != nil && !needsEdit && !(jpg.map { hasStagingCopy(owner, newerThan: $0) } ?? false)
+                frame.jpg != nil && forGooglePhotos
+                && !(jpg.map { hasStagingCopy(owner, newerThan: $0) } ?? false)
             if let current = suffix {
                 let missing: [(FileRole, SourceFile)] = [
                     (.raw, raw == nil ? frame.raf : nil), (.jpg, jpg == nil ? frame.jpg : nil),
@@ -140,7 +143,7 @@ public enum ApplyPlanner {
                     let staging = files(of: owner).filter { $0.role == .googlePhotos && $0.status == .verified }
                     plan.superseded += (recorded + staging).map(\.location)
                     (raw, jpg, suffix, home, needsStaging) = (
-                        nil, nil, nil, input.destination, frame.jpg != nil && !needsEdit
+                        nil, nil, nil, input.destination, frame.jpg != nil && forGooglePhotos
                     )
                 }
             }
@@ -169,6 +172,15 @@ public enum ApplyPlanner {
                         source: .archive(
                             jpg?.location ?? location(archiveName, in: home, subfolder: ArchiveLayout.jpg)),
                         size: file.size, to: claim(archiveName, in: home, subfolder: googlePhotos), favourite: false))
+            }
+
+            // A Google Photos copy this photo no longer qualifies for goes to the Trash, if it is still there.
+            if !forGooglePhotos {
+                let unwanted = stagingCopiesStillThere(of: owner)
+                if !unwanted.isEmpty {
+                    plan.removals.append(
+                        ApplyPlan.Removal(frame: frame.id, files: unwanted.map(\.location), kind: .notForGooglePhotos))
+                }
             }
 
             // Tags on files already there are planned from what the files carry now (SR12).
@@ -203,12 +215,7 @@ public enum ApplyPlanner {
             }
             if !removable.isEmpty {
                 // The staging copy goes too if it is still there; if it has gone, that holds nothing up.
-                let staging = files(of: owner).filter { file in
-                    file.role == .googlePhotos && file.status == .verified
-                        && (input.listings[file.destination]?.names(in: file.location.subfolder).contains {
-                            $0.lowercased() == file.location.name.lowercased()
-                        } ?? false)
-                }
+                let staging = stagingCopiesStillThere(of: owner)
                 plan.removals.append(ApplyPlan.Removal(frame: frame.id, files: (removable + staging).map(\.location)))
             }
 
@@ -252,6 +259,17 @@ public enum ApplyPlanner {
         // MARK: Binding (SR2)
 
         private func files(of owner: Owner) -> [Ledger.ArchiveFile] { filesByOwner[owner] ?? [] }
+
+        /// The frame's verified Google Photos copies that are still in their folder. Emptying that folder after
+        /// uploading is expected, so a copy that has gone is simply left gone.
+        private func stagingCopiesStillThere(of owner: Owner) -> [Ledger.ArchiveFile] {
+            files(of: owner).filter { file in
+                file.role == .googlePhotos && file.status == .verified
+                    && (input.listings[file.destination]?.names(in: file.location.subfolder).contains {
+                        $0.lowercased() == file.location.name.lowercased()
+                    } ?? false)
+            }
+        }
 
         private func bound(_ owner: Owner, _ role: FileRole, to file: SourceFile, captured: CaptureTime?) -> Ledger
             .ArchiveFile?

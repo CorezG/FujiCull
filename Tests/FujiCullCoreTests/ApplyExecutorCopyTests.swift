@@ -18,8 +18,9 @@ import Testing
         return world
     }
 
+    // DSCF0002 is a keeper but not a favourite, so it has no Google Photos copy (R29).
     private let standardArchive = [
-        "Japan 2026/Google Photos/DSCF0001.JPG", "Japan 2026/Google Photos/DSCF0002.JPG", "Japan 2026/JPG/DSCF0001.JPG",
+        "Japan 2026/Google Photos/DSCF0001.JPG", "Japan 2026/JPG/DSCF0001.JPG",
         "Japan 2026/JPG/DSCF0002.JPG", "Japan 2026/RAW/DSCF0001.RAF", "Japan 2026/RAW/DSCF0002.RAF",
         "Japan 2026/Videos/DSCF0005.MOV",
     ]
@@ -33,7 +34,7 @@ import Testing
         let (outcome, executor) = try world.run()
 
         #expect(outcome.stopped == nil && outcome.skipped.isEmpty && outcome.tagFailures.isEmpty)
-        #expect(outcome.copied.count == 7)
+        #expect(outcome.copied.count == 6)
         #expect(try world.archiveNames() == standardArchive)
         let archived = try world.archiveFiles()
         #expect(archived["Japan 2026/RAW/DSCF0001.RAF"] == (try world.sha(ofCardFile: "DCIM/124_FUJI/DSCF0001.RAF")))
@@ -132,7 +133,7 @@ import Testing
                 verified += 1
             }
         }
-        #expect(verified == 7)
+        #expect(verified == 6)
         #expect(records.first == .destination(volumeUUID: world.archiveUUID, folder: "Japan 2026"))
     }
 
@@ -292,7 +293,7 @@ import Testing
 
         #expect(recovery.adopted == [world.location("DSCF0001.RAF")])
         #expect(executor.ledger.file(at: world.location("DSCF0001.RAF"))?.status == .verified)
-        #expect(plan.copies.count == 6, "the adopted file isn't copied again")
+        #expect(plan.copies.count == 5, "the adopted file isn't copied again")
         _ = executor.copy(plan, isCancelled: { false })
         #expect(try world.archiveNames() == standardArchive)
     }
@@ -416,7 +417,7 @@ import Testing
 
     @Test func aRunCutOffBeforeTheStagingCopiesMakesThemNextTime() throws {
         let world = try ApplyWorld()
-        try world.addPair("DSCF0001", keepMark)
+        try world.addPair("DSCF0001", favouriteMark)
         // Folder creations: 1 the trip folder, 2 RAW, 3 JPG, 4 Google Photos.
         try world.run(FaultyFileSystem(.die(.createFolder, call: 4)))
         #expect(try world.archiveNames() == ["Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/DSCF0001.RAF"])
@@ -431,7 +432,7 @@ import Testing
 
     @Test func anArchiveJPGEditedSinceItWasVerifiedIsNotCopiedToGooglePhotos() throws {
         let world = try ApplyWorld()
-        try world.addPair("DSCF0001", keepMark)
+        try world.addPair("DSCF0001", favouriteMark)
         try world.run(FaultyFileSystem(.die(.createFolder, call: 4)))
         try ApplyWorld.bytes(1_200, seed: 777).write(to: world.archive.url("Japan 2026/JPG/DSCF0001.JPG"))
 
@@ -450,7 +451,7 @@ import Testing
     @Test func aFlaggedPhotoIsArchivedUnderEditMeWithoutAGooglePhotosCopy() throws {
         let world = try ApplyWorld()
         try world.addPair("DSCF0001", toEditMark)
-        try world.addPair("DSCF0002", keepMark)
+        try world.addPair("DSCF0002", favouriteMark)
 
         let (outcome, executor) = try world.run()
 
@@ -494,7 +495,7 @@ import Testing
         world.marks[id] = favouriteMark
         let (favoured, tagged) = try world.run()
 
-        #expect(favoured.copied.isEmpty)
+        #expect(favoured.copied == [world.location("DSCF0001.JPG", in: "Google Photos")], "only its Google Photos copy")
         #expect(try world.tags("Japan 2026/RAW/DSCF0001.RAF") == ["Favourite"])
         #expect(Set(try world.tags("Japan 2026/JPG/DSCF0001.JPG")) == ["Favourite", "Print"])
         #expect(tagged.ledger.file(at: world.location("DSCF0001.JPG"))?.taggedByUs == true)

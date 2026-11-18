@@ -36,12 +36,13 @@ extension ApplyWorld {
         #expect(
             preflight.keepers == 2 && preflight.favourites == 1 && preflight.rejects == 1 && preflight.undecided == 1)
         #expect(preflight.videos == 1)
-        #expect(preflight.copyBytes == 2 * (3_000 + 1_200 + 1_200) + 5_000)
+        // The favourite's RAW, JPG and Google Photos copy, the plain keeper's RAW and JPG, and the video.
+        #expect(preflight.copyBytes == (3_000 + 1_200 + 1_200) + (3_000 + 1_200) + 5_000)
         #expect(preflight.plan.destinationState == .new)
         #expect(try world.archiveNames().isEmpty, "pre-flight copies nothing")
 
         let report = try await run.copy()
-        #expect(report.outcome.copied.count == 7 && report.blockers.isEmpty)
+        #expect(report.outcome.copied.count == 6 && report.blockers.isEmpty)
         #expect(report.check.keepersOnArchive == 3)
         #expect(
             report.confirmation == ApplyExecutor.Confirmation(toTrash: [], toDelete: reject4, deleteMode: .permanent))
@@ -49,7 +50,7 @@ extension ApplyWorld {
 
         let summary = await run.finish(confirmed: true)
         #expect(summary.deletedFromCard == reject4)
-        #expect(summary.copiedFiles == 7 && summary.keepersOnArchive == 3)
+        #expect(summary.copiedFiles == 6 && summary.keepersOnArchive == 3)
         #expect(await run.ledger.framesDeletedFromCard.contains(FrameID("DCIM/124_FUJI/DSCF0004")))
     }
 
@@ -136,7 +137,7 @@ extension ApplyWorld {
         #expect(try world.archiveNames() == ["Japan 2026/IMG_0001.JPG"], "nothing was added without being asked")
 
         let report = try await run.copy(addToExistingFolder: true)
-        #expect(report.outcome.copied.count == 7)
+        #expect(report.outcome.copied.count == 6)
     }
 
     @Test func aNameTakenDuringTheRunIsResolvedInTheSameRun() async throws {

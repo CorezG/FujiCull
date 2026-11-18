@@ -10,7 +10,7 @@ card before culling, and importing over the camera's USB is slow.
 
 **FujiCull lets me cull straight from the SD card with one hand on the arrow keys,
 then offloads only the keepers (RAF + JPG) to my archive SSD, prepares a folder of
-keeper JPGs for Google Photos, and deletes the rejects from the card.**
+my favourite JPGs for Google Photos, and deletes the rejects from the card.**
 
 The JPG (with my film simulation) is what I judge; the RAF always follows its JPG.
 
@@ -101,8 +101,8 @@ Apply runs as an ordered, safe sequence:
    - If any frames are Undecided: warn — they will be **left on the card untouched**.
 2. **Copy keepers** into `<SSD>/<Trip name>/`, a flat folder at the root of the SSD that matches the
    existing archive (`Japan 2024/`, `Vancouver '26/`). Inside it, each kind of file has its own folder:
-   RAF files in `RAW/`, JPGs in `JPG/`, and a second copy of the keeper JPGs in `Google Photos/` for
-   uploading. _Amended 2026-10-09 (was `FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`) and 2026-10-11
+   RAF files in `RAW/`, JPGs in `JPG/`, and a second copy of the ♥ favourite JPGs in `Google Photos/`
+   for uploading (R29). _Amended 2026-10-09 (was `FujiCull Archive/YYYY/YYYY-MM-DD <Trip name>/`) and 2026-10-11
    (RAF and JPG used to sit together directly in the trip folder; files archived that way stay where
    they are and are still tracked)._
    - If `<Trip name>/` already exists and FujiCull didn't create it for this card, ask before adding to it.
@@ -120,6 +120,7 @@ Apply runs as an ordered, safe sequence:
 - R24. Keepers and undecided frames remain on the card after Apply (I format in camera).
 - R25. Apply can be run again later (e.g. after deciding the undecided ones) and only processes what changed.
 - R26. If a frame that an earlier Apply archived is later changed to **Reject**, the next Apply also removes its archive RAF, archive JPG and Google Photos JPG. These files are moved to the SSD's Trash, are listed in the deletion confirmation, and are removed only if unchanged since FujiCull verified them. A frame changed back to Undecided keeps its archive copy. _Added 2026-10-09._
+- R29. **Google Photos holds favourites only.** `Google Photos/` gets a copy of the JPG of every ♥ favourite keeper, except one flagged as needing an edit (R28). Plain keepers are archived in `RAW/` and `JPG/` only. The folder follows later changes: favouriting an archived keeper adds its copy on the next Apply; unfavouriting it, or flagging it for editing, moves its copy to the SSD's Trash on the next Apply, after confirmation, if the copy is still there and unchanged. Its RAW and JPG are never touched by this. A copy already removed from the folder (after uploading, say) is left gone. _Added 2026-11-17; before this every keeper got a copy, and the next Apply moves FujiCull's copies of non-favourites to the Trash._
 - R27. Apply copies every video on the card (`.MOV`, `.MP4`, any case) to `<SSD>/<Trip name>/Videos/` with the same copy-and-verify and never-overwrite rules as photos. Videos are never deleted from the card by FujiCull, never tagged, and not copied to `Google Photos/`. Any other non-photo file is listed in pre-flight and the summary as left on the card and not archived, with a warning that formatting the card loses it. _Added 2026-10-09 (Q12)._
 
 ## 5. Non-functional requirements
@@ -152,7 +153,7 @@ Apply runs as an ordered, safe sequence:
 
 - A1. macOS 14 (Sonoma) or later is acceptable as the minimum.
 - A2. Personal, non-sandboxed build run locally (simplifies card/SSD access and deletion).
-- A3. Duplicating keeper JPGs into `Google Photos/` on the SSD (~10 GB per trip) is acceptable in exchange for a one-step upload folder.
+- A3. Duplicating favourite JPGs into `Google Photos/` on the SSD (a few hundred MB per trip; ~10 GB when it held every keeper) is acceptable in exchange for a one-step upload folder.
 - A4. ~~Folder date uses the earliest capture date on the card.~~ Superseded 2026-10-09: folders are named by trip only, with no date.
 
 ## 8. Tip (not a requirement)

@@ -187,11 +187,20 @@ private struct PreflightView: View {
         Row(
             figure: preflight.rejects.formatted(), label: "to reject", detail: rejectLine,
             colour: Color(red: 1, green: 0.27, blue: 0.23))
-        if !plan.removals.isEmpty {
+        let rejectedFiles = plan.removals.filter { $0.kind == .rejected }.flatMap(\.files).count
+        if rejectedFiles > 0 {
             Row(
-                figure: plan.removals.flatMap(\.files).count.formatted(),
+                figure: rejectedFiles.formatted(),
                 label: "archive files of frames you've since rejected",
                 detail: "Moved to the archive drive's Trash, after you confirm.")
+        }
+        if plan.notForGooglePhotosCount > 0 {
+            Row(
+                figure: plan.notForGooglePhotosCount.formatted(),
+                label: "Google Photos copies of photos that aren't ♥ favourites",
+                detail:
+                    "Google Photos holds favourites only. These copies are moved to the archive drive's Trash, after you confirm; the photos stay in RAW and JPG."
+            )
         }
         Row(
             figure: preflight.undecided.formatted(), label: "undecided",
@@ -372,7 +381,7 @@ private struct ConfirmView: View {
         }
         if !confirmation.toTrash.isEmpty {
             Text(
-                "Move \(plural(confirmation.toTrash.count, "archive file", "archive files")) of frames you rejected after archiving to \(model.archive?.name ?? "the archive")'s Trash?"
+                trashQuestion
             )
             .font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
             FileList(
@@ -393,6 +402,22 @@ private struct ConfirmView: View {
                 .keyboardShortcut(.defaultAction)
         }
         .padding(.top, 22)
+    }
+
+    private var trashQuestion: String {
+        let drive = "\(model.archive?.name ?? "the archive")'s Trash"
+        let total = confirmation.toTrash.count
+        let googlePhotos = confirmation.notForGooglePhotos
+        if googlePhotos == 0 {
+            return
+                "Move \(plural(total, "archive file", "archive files")) of frames you rejected after archiving to \(drive)?"
+        }
+        if googlePhotos == total {
+            return
+                "Move \(plural(total, "Google Photos copy", "Google Photos copies")) of photos that aren't ♥ favourites to \(drive)? The photos stay in RAW and JPG."
+        }
+        return
+            "Move \(plural(total, "archive file", "archive files")) to \(drive)? \(plural(total - googlePhotos, "is from a frame", "are from frames")) you rejected after archiving, and \(googlePhotos) \(googlePhotos == 1 ? "is a Google Photos copy" : "are Google Photos copies") of photos that aren't ♥ favourites."
     }
 
     private var deleteQuestion: String {

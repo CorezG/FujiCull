@@ -112,8 +112,22 @@ public struct ApplyPlan: Equatable, Sendable {
 
     /// The archive files of a frame rejected after it was archived (D6, R26).
     public struct Removal: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
+            /// The frame is now rejected: all its archive copies go (R26).
+            case rejected
+            /// The frame is still a keeper but no longer belongs in Google Photos (not a favourite, or flagged
+            /// for editing): only its Google Photos copy goes (R29). Its RAW and JPG are never touched.
+            case notForGooglePhotos
+        }
+
         public let frame: FrameID
         public let files: [ArchiveLocation]
+        public var kind: Kind = .rejected
+    }
+
+    /// Files planned for the Trash only because their keeper no longer belongs in Google Photos (R29).
+    public var notForGooglePhotosCount: Int {
+        removals.filter { $0.kind == .notForGooglePhotos }.reduce(0) { $0 + $1.files.count }
     }
 
     public struct CardDelete: Equatable, Sendable {

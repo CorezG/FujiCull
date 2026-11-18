@@ -54,7 +54,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         #expect(done.removal == ApplyExecutor.RemovalOutcome(declined: true))
         #expect(try world.cardNames() == before)
         #expect(done.executor.ledger.cardFileStatus(reject4[0]) == nil, "not even an intent is recorded")
-        #expect(done.copy.copied.count == 7, "the keepers were still copied")
+        #expect(done.copy.copied.count == 6, "the keepers were still copied")
     }
 
     @Test func aRunWithNothingToRemoveAsksNothing() throws {
@@ -76,8 +76,9 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
 
         let summary = try world.apply().summary
 
-        #expect(summary.copiedFiles == 7)
-        #expect(summary.copiedBytes == 2 * (3_000 + 1_200 + 1_200) + 5_000)
+        #expect(summary.copiedFiles == 6)
+        // The favourite's RAW, JPG and Google Photos copy, the plain keeper's RAW and JPG, and the video.
+        #expect(summary.copiedBytes == (3_000 + 1_200 + 1_200) + (3_000 + 1_200) + 5_000)
         #expect(summary.keepersOnArchive == 3)
         #expect(summary.deletedFromCard == reject4)
         #expect(summary.leftOnCard.undecided == [frameID("DSCF0003")])
@@ -109,7 +110,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
         let summary = try world.apply(confirm: { _ in false }).summary
 
         #expect(summary.declined)
-        #expect(summary.deletedFromCard.isEmpty && summary.copiedFiles == 7 && summary.stopped == nil)
+        #expect(summary.deletedFromCard.isEmpty && summary.copiedFiles == 6 && summary.stopped == nil)
     }
 
     @Test func theSummaryListsDuplicatesLeftByRehomingAndSkippedRemovals() throws {
@@ -469,7 +470,7 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
 
     @Test func aLockedCardKeepsItsRejectsButConfirmedArchiveRemovalsStillHappen() throws {
         let world = try ApplyWorld()
-        let id = try world.addPair("DSCF0001", keepMark)
+        let id = try world.addPair("DSCF0001", favouriteMark)
         try world.apply()
         world.marks[id] = rejectMark
         world.cardIsReadOnly = true
@@ -498,11 +499,11 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
 
     // MARK: Removing archive copies of frames rejected later (D6, R26, SR18)
 
-    /// One keeper archived by a first run, then rejected.
+    /// One keeper archived by a first run, then rejected. Both are favourites, so each has a Google Photos copy.
     private func rejectedAfterArchiving() throws -> (world: ApplyWorld, id: FrameID) {
         let world = try ApplyWorld()
-        let id = try world.addPair("DSCF0001", keepMark)
-        try world.addPair("DSCF0002", keepMark)
+        let id = try world.addPair("DSCF0001", favouriteMark)
+        try world.addPair("DSCF0002", favouriteMark)
         try world.apply()
         world.marks[id] = rejectMark
         return (world, id)
@@ -648,5 +649,58 @@ private let reject4 = ["DCIM/124_FUJI/DSCF0004.RAF", "DCIM/124_FUJI/DSCF0004.JPG
             removal.skipped.map(\.reason) == [.notThisFramesFile("Holiday.JPG"), .notThisFramesFile("DSCF0002.RAF")])
         #expect(FileManager.default.fileExists(atPath: foreign.path))
         #expect(FileManager.default.fileExists(atPath: world.archive.url("Japan 2026/RAW/DSCF0002.RAF").path))
+    }
+
+    // MARK: Google Photos holds favourites only (R29)
+
+    @Test func unfavouritingAnArchivedKeeperMovesOnlyItsGooglePhotosCopyToTheTrash() throws {
+        let world = try ApplyWorld()
+        let id = try world.addPair("DSCF0001", favouriteMark)
+        try world.apply()
+        world.marks[id] = keepMark
+        let cardBefore = try world.cardNames()
+        var asked: ApplyExecutor.Confirmation?
+
+        let done = try world.apply(confirm: {
+            asked = $0
+            return true
+        })
+
+        let staged = world.location("DSCF0001.JPG", in: "Google Photos")
+        #expect(asked?.toTrash == [staged])
+        #expect(done.removal.trashed.map(\.location) == [staged])
+        #expect(done.removal.skipped.isEmpty)
+        #expect(
+            try world.archiveNames().filter { !$0.contains(".TestTrash") } == [
+                "Japan 2026/JPG/DSCF0001.JPG", "Japan 2026/RAW/DSCF0001.RAF",
+            ])
+        #expect(try world.cardNames() == cardBefore, "a keeper is never deleted from the card")
+    }
+
+    @Test func aGooglePhotosCopyRemovalIsRefusedForAKeepersRAWOrJPGOrAFavouritesCopy() throws {
+        // The engine checks for itself: only the Google Photos copy of a keeper that no longer qualifies.
+        let world = try ApplyWorld()
+        let plain = try world.addPair("DSCF0001", favouriteMark)
+        let loved = try world.addPair("DSCF0002", favouriteMark)
+        try world.apply()
+        world.marks[plain] = keepMark
+        let executor = try world.executor()
+        var plan = try executor.makePlan()
+        let gate = try executor.gate(
+            plan: plan, outcome: ApplyExecutor.CopyOutcome(), check: try executor.finalCheck(), isCancelled: { false })
+        plan.removals = [
+            ApplyPlan.Removal(frame: plain, files: [world.location("DSCF0001.RAF")], kind: .notForGooglePhotos),
+            ApplyPlan.Removal(frame: plain, files: [world.location("DSCF0001.JPG")], kind: .notForGooglePhotos),
+            ApplyPlan.Removal(
+                frame: loved, files: [world.location("DSCF0002.JPG", in: "Google Photos")], kind: .notForGooglePhotos),
+            ApplyPlan.Removal(frame: plain, files: [world.location("DSCF0001.JPG", in: "Google Photos")]),
+        ]
+        plan.cardDeletes = []
+
+        let removal = executor.removeAndDelete(plan, gate: gate, confirm: { _ in true }, isCancelled: { false })
+
+        #expect(removal.trashed.isEmpty)
+        #expect(removal.skipped.map(\.reason) == [.notRejected, .notRejected, .notRejected, .notRejected])
+        #expect(try world.archiveNames().filter { !$0.contains(".TestTrash") }.count == 6, "nothing was moved")
     }
 }
